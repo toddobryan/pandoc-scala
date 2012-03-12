@@ -113,10 +113,12 @@ package object text {
       manifest[Cite] -> (() => (regex("""Cite\s+"""r) ~> listParser[Citation] ~ listParser[Inline]).map {
         case citations ~ content => Cite(citations, content)
       }),
-      manifest[Code] -> (() => (regex("""Code\s+"""r) ~> getParser[Attr] ~ getParser[String]). map {
+      manifest[Code] -> (() => (regex("""Code\s+"""r) ~> getParser[Attr] ~ getParser[String]).map {
         case attr ~ str => Code(attr, str) 
       }),
-      manifest[Space] -> (() => (regex("""Space""").map((s) => Space))),
+      manifest[Math] -> (() => (regex("""Math\s+"""r) ~> getParser[MathType] ~ getParser[String]).map {
+        case kind ~ str => Math(kind, str)
+      }),
       
       manifest[Inline] -> (() => 
         getParser[Str] |
@@ -127,7 +129,12 @@ package object text {
         getParser[Subscript] |
         getParser[SmallCaps] |
         getParser[Quoted] |
-        getParser[Cite]),
+        getParser[Cite] |
+        getParser[Code] |
+        literal("Space").map((s) => Space) |
+        literal("LineBreak").map((s) => LineBreak) |
+        getParser[Math]
+        ),
         
       manifest[Citation] -> (() => (regex("""Citation\s+"""r) ~> getParser[String] ~ listParser[Inline] 
           ~ listParser[Inline] ~ getParser[CitationMode] ~ getParser[Int] ~ getParser[Int]).map {
