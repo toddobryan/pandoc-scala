@@ -30,7 +30,7 @@ object Reader extends RegexParsers {
   
   def listParser[T](implicit man: Manifest[T]): Parser[List[T]] = {
     val itemParser = parsers(man)().asInstanceOf[Parser[T]] 
-    (openParser("[") ~> repsep(itemParser, comma) <~ closeParser(")"))
+    (openParser("[") ~> repsep(itemParser, comma) <~ closeParser("]"))
   }
   
   def dupleParser[A, B](aParser: Parser[A], bParser: Parser[B])(implicit manA: Manifest[A], manB: Manifest[B]): Parser[(A, B)] = {
