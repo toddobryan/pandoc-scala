@@ -1,6 +1,6 @@
 package pandoc
 
-import pandoc.util.Reader.{getParser, listParser, literal, parsers, regex, Parser, ~}
+import pandoc.util.Reader.{getParser, listParser, labelWithContent, literal, parsers, regex, Parser, ~}
 
 package object text {
   case class Pandoc(meta: Meta, content: List[Block])
@@ -30,12 +30,19 @@ package object text {
   case object OneParen extends ListNumberDelim
   case object TwoParens extends ListNumberDelim
   
-  type Attr = (String, List[String], List[(String, String)])
+  type KeyValue = (String, String)
+  type Attr = (String, List[String], List[KeyValue])
   val NullAttr: Attr = ("", Nil, Nil)
+    manifest[KeyValue] -> (() => dupleParser(getParser[String], getParser[String]))
+    manifest[Attr] -> (() => tripleParser(getParser[String], listParser[String], listParser[KeyValue]))
   
   type TableCell = List[Block]
+  type TableCellList = List[TableCell]
   
   type Format = String
+  
+  type BlockList = List[Block]
+  type DefnItem = (List[Inline], List[List[Block]])
 
   sealed abstract class Block
   case class Plain(content: List[Inline]) extends Block
@@ -51,6 +58,7 @@ package object text {
   case class Table(caption: List[Inline], alignments: List[Alignment], widths: List[Double], 
                    headers: List[TableCell], rows: List[List[TableCell]]) extends Block
   case object EmptyBlock
+  
 
   sealed abstract class QuoteType
   case object SingleQuote extends QuoteType
@@ -80,7 +88,7 @@ package object text {
   case class Link(linkStr: List[Inline], target: Target) extends Inline
   case class Image(altStr: List[Inline], target: Target) extends Inline
   case class Note(content: List[Block])
-
+  
   case class Citation(id: String, prefix: List[Inline], suffix: List[Inline], 
                       mode: CitationMode, noteNum: Int, hash: Int)
                     
@@ -89,16 +97,64 @@ package object text {
   case object SuppressAuthor extends CitationMode
   case object NormalCitation extends CitationMode
   
-  def labelWithContent[T, U](label: String, resultType: Function1[List[T], U])(implicit man: Manifest[T]):
-      (() => Parser[U]) = {
-    (() => (regex("""%s\s+""".format(label).r) ~> listParser[T]).map(resultType.apply(_)))
-  }
-  
   def initializeParsers() {
     parsers += (
-      manifest[QuoteType] -> (() => 
+      manifest[Plain] -> (() => (regex("""Plain\s+"""r) ~> listParser[Inline]).map(Plain(_))),
+      manifest[Para] -> (() => (regex("""Para\s+"""r) ~> listParser[Inline]).map(Para(_))),
+      manifest[CodeBlock] -> (() => (regex("""CodeBlock\s+"""r) ~> getParser[Attr] ~ getParser[String]).map {
+        case attr ~ str => CodeBlock(attr, str)
+      }),
+      manifest[RawBlock] -> (() => (regex("""RawBlock\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
+        case format ~ str => RawBlock(format, str)
+      }),
+      manifest[BlockQuote] -> (() => (regex("""BlockQuote\s+"""r) ~> listParser[Block]).map(BlockQuote(_))),
+      manifest[BlockList] -> (() => listParser[Block]),
+      manifest[OrderedList] -> (() => (regex("""OrderedList\s+"""r) ~> getParser[ListAttributes] ~ listParser[BlockList]).map {
+        case attrs ~ items => OrderedList(attrs, items)
+      }),
+      manifest[BulletList] -> (() => (regex("""BulletList\s+"""r) ~> listParser[BlockList]).map(BulletList(_))),
+      manifest[DefnItem] -> (() => 
+        ((regex("""\(\s*"""r) ~> listParser[Inline] <~ regex("""\s*,\s*"""r)) ~ 
+         (listParser[BlockList] <~ regex("""\s*\)"""r))).map {
+          case term ~ defn => (term, defn)
+        }),
+      manifest[DefinitionList] -> (() => (regex("""DefinitionList\s+"""r) ~> listParser[DefnItem]).map(DefinitionList(_))),
+      manifest[Header] -> (() => (regex("""Header\s+"""r) ~> getParser[Int] ~ listParser[Inline]).map{
+        case level ~ content => Header(level, content)
+      }),
+      manifest[TableCellList] => (() => listParser[Block]),
+      manifest[Table] -> (() => (regex("""Table\s+"""r) ~> listParser[Inline] ~ listParser[Alignment] ~ listParser[Double] ~
+        listParser[TableCell] ~ listParser[TableCellList]).map {
+          case caption ~ alignments ~ widths ~ headers ~ rows => Table(caption, alignments, widths, headers, rows)
+      }),
+      manifest[Block] -> (
+        getParser[Plain] |
+        getParser[Para] |
+        getParser[CodeBlock] |
+        getParser[RawBlock] |
+        getParser[BlockQuote] |
+        getParser[OrderedList] |
+        getParser[BulletList] |
+        getParser[DefinitionList] |
+        getParser[Header] |
+        literal("HorizantalRule").map((s) => HorizontalRule) |
+        getParser[Table] |
+        literal("EmptyBlock").map((s) => EmptyBlock)
+    )
+
+    manifest[QuoteType] -> (() => 
         (literal("SingleQuote").map((s) => SingleQuote) |   
          literal("DoubleQuote").map((s) => DoubleQuote))),
+      
+      manifest[Target] -> (() => 
+        ((regex("""\(\s*"""r) ~> getParser[String]) ~ 
+            (regex("""\s*,\s*"""r) ~> getParser[String] <~ regex("""\s*\)"""r))).map {
+              case url ~ title => (url, title)
+            }),
+
+      manifest[MathType] -> (() =>
+        (literal("DisplayMath").map((s) => DisplayMath) | 
+         literal("InlineMath").map((s) => InlineMath))),
          
       manifest[Str] -> (() => (regex("""Str\s+"""r) ~> getParser[String]).map(Str(_))),
       manifest[Emph] -> labelWithContent[Inline, Emph]("Emph", Emph(_)),
@@ -119,6 +175,16 @@ package object text {
       manifest[Math] -> (() => (regex("""Math\s+"""r) ~> getParser[MathType] ~ getParser[String]).map {
         case kind ~ str => Math(kind, str)
       }),
+  	  manifest[RawInline] -> (() => (regex("""RawInline\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
+  	    case format ~ str => RawInline(format, str)
+  	  }),
+  	  manifest[Link] -> (() => (regex("""Link\s+"""r) ~> listParser[Inline] ~ getParser[Target]).map {
+  	    case linkStr ~ target => Link(linkStr, target)
+  	  }),
+  	  manifest[Image] -> (() => (regex("""Image\s+"""r) ~> listParser[Inline] ~ getParser[Target]).map {
+  	    case altStr ~ target => Image(altStr, target)
+  	  }),
+  	  manifest[Note] -> (() => (regex("""Note\s+"""r) ~> listParser[Block]).map(Note(_))),
       
       manifest[Inline] -> (() => 
         getParser[Str] |
@@ -133,7 +199,11 @@ package object text {
         getParser[Code] |
         literal("Space").map((s) => Space) |
         literal("LineBreak").map((s) => LineBreak) |
-        getParser[Math]
+        getParser[Math] |
+        getParser[RawInline] |
+        getParser[Link] |
+        getParser[Image] |
+        getParser[Note]
         ),
         
       manifest[Citation] -> (() => (regex("""Citation\s+"""r) ~> getParser[String] ~ listParser[Inline] 
