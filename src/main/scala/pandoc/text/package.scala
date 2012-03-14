@@ -6,15 +6,16 @@ package object text {
   case class Pandoc(meta: Meta, content: List[Block])
 
   case class Meta(title: List[Inline], authors: List[List[Inline]], date: List[Inline])
+  type InlineList = List[Inline]
 
   sealed abstract class Alignment
   case object AlignLeft extends Alignment
   case object AlignRight extends Alignment
   case object AlignCenter extends Alignment
   case object AlignDefault extends Alignment
-  
-  type ListAttributes = (Int, ListNumberStyle, ListNumberDelim)
 
+  type ListAttributes = (Int, ListNumberStyle, ListNumberDelim)
+  
   sealed abstract class ListNumberStyle
   case object DefaultStyle extends ListNumberStyle
   case object Example extends ListNumberStyle
@@ -96,6 +97,41 @@ package object text {
   case object NormalCitation extends CitationMode
   
   def initializeParsers() {
+    parsers += manifest[Pandoc] -> (() => (regex("""Pandoc\s+"""r) ~> getParser[Meta] ~ listParser[Block]).map {
+      case meta ~ content => Pandoc(meta, content)
+    })
+
+    parsers += manifest[Meta] -> (() => (regex("""Meta\s+"""r) ~> listParser[Inline] ~ listParser[InlineList] ~ listParser[Inline]).map{
+      case title ~ authors ~ date => Meta(title, authors, date)  
+    })
+    parsers += manifest[InlineList] -> (() => listParser[Inline])
+
+    parsers += manifest[Alignment] -> (() => 
+      literal("AlignLeft").map((s) => AlignLeft) |
+      literal("AlignRight").map((s) => AlignRight) |
+      literal("AlignCenter").map((s) => AlignCenter) |
+      literal("AlignDefault").map((s) => AlignDefault)
+    )
+  
+    parsers += manifest[ListAttributes] -> (() => tripleParser(getParser[Int], getParser[ListNumberStyle], getParser[ListNumberDelim]))
+
+    parsers += manifest[ListNumberStyle] -> (() =>
+      literal("DefaultStyle").map((s) => DefaultStyle) |
+      literal("Example").map((s) => Example) |
+      literal("Decimal").map((s) => Decimal) |
+      literal("LowerRoman").map((s) => LowerRoman) |
+      literal("UpperRoman").map((s) => UpperRoman) |
+      literal("LowerAlpha").map((s) => LowerAlpha) |
+      literal("UpperAlpha").map((s) => UpperAlpha)    
+    )
+    
+    parsers += manifest[ListNumberDelim] -> (() =>
+      literal("DefaultDelim").map((s) => DefaultDelim) |
+      literal("Period").map((s) => Period) |
+      literal("OneParen").map((s) => OneParen) |
+      literal("TwoParens").map((s) => TwoParens)
+    )
+
     parsers += manifest[KeyValue] -> (() => dupleParser(getParser[String], getParser[String]))
     parsers += manifest[Attr] -> (() => tripleParser(getParser[String], listParser[String], listParser[KeyValue]))
     parsers += manifest[Plain] -> (() => (regex("""Plain\s+"""r) ~> listParser[Inline]).map(Plain(_)))
