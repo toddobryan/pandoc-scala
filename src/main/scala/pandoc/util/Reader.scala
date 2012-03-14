@@ -18,14 +18,14 @@ object Reader extends RegexParsers {
     parsers(man)().asInstanceOf[Parser[T]]
   }
   
-  def openParser(s: String): Parser[_] = {
-    (literal(s) ~ regex("""\s*"""r))
+  def openParser(s: String): Parser[String] = {
+    (literal(s) <~ regex("""\s*"""r))
   }
   
-  val comma: Parser[_] = regex("""\s*,\s*"""r)
+  val comma: Parser[String] = regex("""\s*,\s*"""r)
   
-  def closeParser(s: String): Parser[_] = {
-    (regex("""\s*"""r) ~ literal(s))
+  def closeParser(s: String): Parser[String] = {
+    (regex("""\s*"""r) ~> literal(s))
   }
   
   def listParser[T](implicit man: Manifest[T]): Parser[List[T]] = {
