@@ -2,7 +2,6 @@ package pandoc.text
 
 import java.awt.Color
 import java.io.File
-import javax.swing.text.Style
 
 sealed abstract class HtmlSlideVariant
 case object S5Slides extends HtmlSlideVariant
@@ -29,7 +28,7 @@ case object Citeproc extends CiteMethod
 case object Natbib extends CiteMethod
 case object Biblatex extends CiteMethod
 
-/*
+
 sealed abstract class TokenType
 case object KeywordTok extends TokenType
 case object DataTypeTok extends TokenType
@@ -61,20 +60,21 @@ case class Style(
     lineNumberBackgroundColor: Option[Color])
 
 object Pygments extends Style(
-    Map(KeywordTok -> TokenStyle(color = Some(new Color(0, 112, 32)), 
+    Map(KeywordTok -> TokenStyle(color = Some(new Color(0x0, 0x70, 0x20)), 
     					bold = true),
-    	DataTypeTok -> TokenStyle(color = Some(new Color(144, 32, 0))),
-    	DecValTok -> TokenStyle(color = Some(new Color(64, 160, 112))),
-    	BaseNTok -> TokenStyle(color = Some(new Color(64, 160, 112))),
-    	FloatTok -> TokenStyle(color = Some(new Color(64, 160, 112))),
-    	CharTok -> TokenStyle(color = Some(new Color(64, 160, 112))),
-    	StringTok -> TokenStyle(color = Some(new Color(64, 160, 112))),
-    	CommentTok -> TokenStyle(color = Some(new Color(96, 160, 176))),
-    	OtherTok -> TokenStyle(color = Some(new Color(0, 112, 32))),
-    	AlertTok -> TokenStyle()
+    	DataTypeTok -> TokenStyle(color = Some(new Color(0x90, 0x20, 0x00))),
+    	DecValTok -> TokenStyle(color = Some(new Color(0x40, 0xa0, 0x70))),
+    	BaseNTok -> TokenStyle(color = Some(new Color(0x40, 0xa0, 0x70))),
+    	FloatTok -> TokenStyle(color = Some(new Color(0x40, 0xa0, 0x70))),
+    	CharTok -> TokenStyle(color = Some(new Color(0x40, 0xa0, 0x70))),
+    	StringTok -> TokenStyle(color = Some(new Color(0x40, 0xa0, 0x70))),
+    	CommentTok -> TokenStyle(color = Some(new Color(0x60, 0xa0, 0xb0)), italic = true),
+    	OtherTok -> TokenStyle(color = Some(new Color(0x00, 0x70, 0x20))),
+    	AlertTok -> TokenStyle(color = Some(new Color(0xff, 0x00, 0x00)), bold = true),
+    	FunctionTok -> TokenStyle(color = Some(new Color(0x06, 0x28, 0x7e))),
+    	ErrorTok -> TokenStyle(color = Some(new Color(0xff, 0x00, 0x00)))
     	),
     None, None, Some(new Color(170, 170, 170)), None)
-*/
 
 trait WriterOptions {
   def standalone: Boolean = false
@@ -107,17 +107,6 @@ trait WriterOptions {
   def chapters: Boolean = false
   def listings: Boolean = false
   def highlight: Boolean = false
-  def highlightStyle: Style = 
-  
-                , writerBiblioFiles      = []
-                , writerHtml5            = False
-                , writerBeamer           = False
-                , writerSlideLevel       = Nothing
-                , writerChapters         = False
-                , writerListings         = False
-                , writerHighlight        = False
-                , writerHighlightStyle   = pygments
-                , writerSetextHeaders    = True
-                }
-
+  def highlightStyle: Style = Pygments
+  def setextHeaders: Boolean = true
 }

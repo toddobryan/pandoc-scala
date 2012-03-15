@@ -9,7 +9,6 @@ class Native(val outStream: PrintStream) extends Writer {
   
   def asString[T](arg: T)(implicit man: Manifest[T]) {
     man match {
-      case
     }
   }
   
