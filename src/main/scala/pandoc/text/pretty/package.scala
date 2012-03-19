@@ -7,7 +7,19 @@ package object pretty {
       usePrefix: Boolean,
       lineLength: Option[Int],
       column: Int,
-      newLines: Int)
+      newLines: Int) {
+    
+    def withOutput(newOutput: List[String]) = RenderState(newOutput, prefix, usePrefix, 
+        lineLength, column, newLines)
+    def withPrefix(newPrefix: String) = RenderState(output, newPrefix, usePrefix,
+        lineLength, column, newLines)
+    def withUsePrefix(newUsePrefix: Boolean) = RenderState(output, prefix, newUsePrefix,
+        lineLength, column, newLines)
+    def withColumn(newColumn: Int) = RenderState(output, prefix, usePrefix,
+        lineLength, newColumn, newLines)
+    def withNewLines(newNewLines: Int) = RenderState(output, prefix, usePrefix,
+        lineLength, column, newNewLines)
+  }
   
   sealed abstract class D {
     def isBlank: Boolean = false
@@ -19,13 +31,18 @@ package object pretty {
   case class Prefixed(prefix: String, doc: Doc) extends D
   case class BeforeNonBlank(doc: Doc) extends D
   case class Flush(doc: Doc) extends D
-  case class Blank extends D {
+  case object BreakingSpace extends D {
     override def isBlank: Boolean = true
   }
-  case object BreakingSpace extends Blank
-  case object CarriageReturn extends Blank
-  case object NewLine extends Blank
-  case object BlankLine extends Blank
+  case object CarriageReturn extends D {
+    override def isBlank: Boolean = true
+  }
+  case object NewLine extends D {
+    override def isBlank: Boolean = true
+  }
+  case object BlankLine extends D {
+    override def isBlank: Boolean = true
+  }
   
   case class Doc(content: List[D]) {
     def isEmpty: Boolean = content.isEmpty
@@ -62,11 +79,9 @@ package object pretty {
       val rawPref = state.prefix
       if (state.column == 0 && state.usePrefix && rawPref != "") {
         val pref: List[Char] = rawPref.toCharArray.toList.reverse.dropWhile(_.isSpaceChar).reverse
-        RenderState(pref.mkString :: state.output, state.prefix, state.usePrefix, 
-            state.lineLength, state.column + realLength(pref), state.newLines)
+        state.withOutput(pref.mkString :: state.output).withColumn(state.column + realLength(pref))
       } else if (offset < 0) {
-        RenderState(s :: state.output, state.prefix, state.usePrefix, 
-            state.lineLength, 0, state.newLines + 1)
+        state.withOutput(s :: state.output).withColumn(0).withNewLines(state.newLines + 1)
       } else {
         state
       }
@@ -74,13 +89,11 @@ package object pretty {
       val pref = state.prefix
       val statePrime: RenderState = 
         if (state.column == 0 && state.usePrefix && pref != "") {
-    	  RenderState(pref :: state.output, state.prefix, state.usePrefix,
-    	      state.lineLength, state.column + realLength(pref.toCharArray.toList), state.newLines)
+    	  state.withOutput(pref :: state.output).withColumn(state.column + realLength(pref.toCharArray.toList))
         } else {
           state
         }
-      RenderState(s :: statePrime.output, statePrime.prefix, statePrime.usePrefix,
-              statePrime.lineLength, statePrime.column + offset, 0)
+      statePrime.withOutput(s :: statePrime.output).withColumn(statePrime.column + offset).withNewLines(0)
     }
   }
   
@@ -95,139 +108,87 @@ package object pretty {
   def renderList(elts: List[D], state: RenderState): RenderState = {
     elts match {
       case Nil => state
-      case Text(offset, s) :: xs => outp(offset, s, state)
+      case Text(offset, s) :: xs => renderList(xs, outp(offset, s, state))
+      case Prefixed(pref, doc) :: xs => {
+        renderList(xs, renderDoc(doc, state.withPrefix(state.prefix + pref)).
+            withPrefix(state.prefix))
+      }
+      case Flush(doc) :: xs => {
+        renderList(xs, renderDoc(doc, state.withUsePrefix(false)).withUsePrefix(state.usePrefix))
+      }
+      case BeforeNonBlank(doc) :: x0 :: xs if (x0.isBlank) => renderList(x0 :: xs, state)
+      case BeforeNonBlank(doc) :: Nil => renderList(Nil, state)
+      case BeforeNonBlank(doc) :: xs => renderList(xs, renderDoc(doc, state))
+      case BlankLine :: xs => {
+        val modState = 
+          if (state.newLines > 1 || xs == Nil) state
+          else if (state.column == 0) outp(-1, "\n", state)
+          else outp(-1, "\n", outp(-1, "\n", state))
+        renderList(xs, modState)
+      }
+      case CarriageReturn :: xs => {
+        if (state.newLines > 0 || xs == Nil) renderList(xs, state)
+        else renderList(xs, outp(-1, "\n", state))
+      }
+      case NewLine :: xs => renderList(xs, outp(-1, "\n", state))
+      case BreakingSpace :: CarriageReturn :: xs => renderList(CarriageReturn :: xs, state)
+      case BreakingSpace :: NewLine :: xs => renderList(NewLine :: xs, state)
+      case BreakingSpace :: BlankLine :: xs => renderList(BlankLine :: xs, state)
+      case BreakingSpace :: BreakingSpace :: xs => renderList(BreakingSpace :: xs, state)
+      case BreakingSpace :: xs => {
+        val xsPrime = xs.dropWhile(_ == BreakingSpace)
+        val next = xsPrime.takeWhile((d: D) => d.isInstanceOf[Text] || d.isInstanceOf[Block])
+        val offset = next.map(offsetOf(_)).sum
+        state.lineLength match {
+          case Some(len) if (len < state.column + 1 + offset) => 
+            renderList(xsPrime, outp(-1, "\n", state))
+          case _ => renderList(xsPrime, outp(1, " ", state))
+        }
+      }
+      case (b1: Block) :: (b2: Block) :: xs => 
+        renderList(mergeBlocks(false, b1, b2) :: xs, state)
+      case (b1: Block) :: BreakingSpace :: (b2: Block) :: xs => {
+        renderList(mergeBlocks(true, b1, b2) :: xs, state)
+      }
+      case Block(width, lns) :: xs => {
+        val indent = state.column - realLength(state.prefix.toCharArray.toList)
+        val modState = 
+          if (indent > 0) state.withPrefix(state.prefix + (" " * indent))
+          else state
+        renderList(xs, renderDoc(blockToDoc(width, lns), modState).withPrefix(state.prefix))
+      }
     }
   }
+  
+  def mergeBlocks(addSpace: Boolean, b1: Block, b2: Block): D = {
+    (b1, b2) match {
+      case (Block(w1, lns1), Block(w2, lns2)) => {
+        val width = w1 + w2 + (if (addSpace) 1 else 0)
+        val empties = List.fill(math.abs(lns1.length - lns2.length))("")
+        def pad(n: Int, s: String): String = s + (" " * (n - realLength(s.toCharArray.toList)))
+        def sp(s: String): String = {
+          if (s != "" && addSpace) " " + s
+          else s
+        }
+        val lns = (lns1 ++ empties) zip (lns2 ++ empties).map(sp(_)) map {
+          case (l1, l2) => pad(w1, l1 + l2)
+        }
+        Block(width, lns)
+      }
+    }
+  }
+  
+  def blockToDoc(width: Int, lns: List[String]): Doc = text(lns.mkString("\n"))
 
-/*
--- | Renders a 'Doc'.  @render (Just n)@ will use
--- a line length of @n@ to reflow text on breakable spaces.
--- @render Nothing@ will not reflow text.
-render :: (Monoid a, IsString a)
-       => Maybe Int -> Doc -> a
-render linelen doc = fromString . mconcat . reverse . output $
-  execState (renderDoc doc) startingState
-   where startingState = RenderState{
-                            output = mempty
-                          , prefix = ""
-                          , usePrefix = True
-                          , lineLength = linelen
-                          , column = 0
-                          , newlines = 2 }
-
-renderDoc :: (IsString a, Monoid a)
-          => Doc -> DocState a
-renderDoc = renderList . toList . unDoc
-
-renderList :: (IsString a, Monoid a)
-           => [D] -> DocState a
-renderList [] = return ()
-renderList (Text off s : xs) = do
-  outp off s
-  renderList xs
-
-renderList (Prefixed pref d : xs) = do
-  st <- get
-  let oldPref = prefix st
-  put st{ prefix = prefix st ++ pref }
-  renderDoc d
-  modify $ \s -> s{ prefix = oldPref }
-  renderList xs
-
-renderList (Flush d : xs) = do
-  st <- get
-  let oldUsePrefix = usePrefix st
-  put st{ usePrefix = False }
-  renderDoc d
-  modify $ \s -> s{ usePrefix = oldUsePrefix }
-  renderList xs
-
-renderList (BeforeNonBlank d : xs) =
-  case xs of
-    (x:_) | isBlank x -> renderList xs
-          | otherwise -> renderDoc d >> renderList xs
-    []                -> renderList xs
-
-renderList (BlankLine : xs) = do
-  st <- get
-  case output st of
-     _ | newlines st > 1 || null xs -> return ()
-     _ | column st == 0 -> do
-       outp (-1) "\n"
-     _         -> do
-       outp (-1) "\n"
-       outp (-1) "\n"
-  renderList xs
-
-renderList (CarriageReturn : xs) = do
-  st <- get
-  if newlines st > 0 || null xs
-     then renderList xs
-     else do
-       outp (-1) "\n"
-       renderList xs
-
-renderList (NewLine : xs) = do
-  outp (-1) "\n"
-  renderList xs
-
-renderList (BreakingSpace : CarriageReturn : xs) = renderList (CarriageReturn:xs)
-renderList (BreakingSpace : NewLine : xs) = renderList (NewLine:xs)
-renderList (BreakingSpace : BlankLine : xs) = renderList (BlankLine:xs)
-renderList (BreakingSpace : BreakingSpace : xs) = renderList (BreakingSpace:xs)
-renderList (BreakingSpace : xs) = do
-  let isText (Text _ _)       = True
-      isText (Block _ _)      = True
-      isText _                = False
-  let isBreakingSpace BreakingSpace = True
-      isBreakingSpace _             = False
-  let xs' = dropWhile isBreakingSpace xs
-  let next = takeWhile isText xs'
-  st <- get
-  let off = sum $ map offsetOf next
-  case lineLength st of
-        Just l | column st + 1 + off > l -> do
-          outp (-1) "\n"
-          renderList xs'
-        _  -> do
-          outp 1 " "
-          renderList xs'
-
-renderList (b1@Block{} : b2@Block{} : xs) =
-  renderList (mergeBlocks False b1 b2 : xs)
-
-renderList (b1@Block{} : BreakingSpace : b2@Block{} : xs) =
-  renderList (mergeBlocks True b1 b2 : xs)
-
-renderList (Block width lns : xs) = do
-  st <- get
-  let oldPref = prefix st
-  case column st - realLength oldPref of
-        n | n > 0 -> modify $ \s -> s{ prefix = oldPref ++ replicate n ' ' }
-        _         -> return ()
-  renderDoc $ blockToDoc width lns
-  modify $ \s -> s{ prefix = oldPref }
-  renderList xs
-
-mergeBlocks :: Bool -> D -> D -> D
-mergeBlocks addSpace (Block w1 lns1) (Block w2 lns2) =
-  Block (w1 + w2 + if addSpace then 1 else 0) $
-     zipWith (\l1 l2 -> pad w1 l1 ++ l2) (lns1 ++ empties) (map sp lns2 ++ empties)
-    where empties = replicate (abs $ length lns1 - length lns2) ""
-          pad n s = s ++ replicate (n - realLength s) ' '
-          sp "" = ""
-          sp xs = if addSpace then (' ' : xs) else xs
-mergeBlocks _ _ _ = error "mergeBlocks tried on non-Block!"
-
-blockToDoc :: Int -> [String] -> Doc
-blockToDoc _ lns = text $ intercalate "\n" lns
-
-offsetOf :: D -> Int
-offsetOf (Text o _)       = o
-offsetOf (Block w _)      = w
-offsetOf BreakingSpace    = 1
-offsetOf _                = 0
-*/
+  def offsetOf(d: D): Int = {
+    d match {
+      case Text(offset, _) => offset
+      case Block(width, _) => width
+      case BreakingSpace => 1
+      case _ => 0
+    }
+  }
+  
   def toChunks(s: List[Char]): List[D] = {
     s match {
       case Nil => Nil
@@ -280,6 +241,7 @@ offsetOf _                = 0
         case _ :: Nil => List(xs.mkString, "")
         case _ :: zs => xs.mkString :: chop(width, zs.mkString)
       }
+      case (xs, ys) => xs.take(width).mkString :: chop(width, (xs ++ ys).drop(width).mkString)
     }
   }
     
@@ -334,28 +296,3 @@ offsetOf _                = 0
     s.map(charWidth _).foldLeft[Int](0)((l: Int, r: Int) => l + r)
   }
 }
-/*
-
-outp :: (IsString a, Monoid a)
-     => Int -> String -> DocState a
-outp off s | off <= 0 = do
-  st' <- get
-  let rawpref = prefix st'
-  when (column st' == 0 && usePrefix st' && not (null rawpref)) $ do
-    let pref = reverse $ dropWhile isSpace $ reverse rawpref
-    modify $ \st -> st{ output = fromString pref : output st
-                      , column = column st + realLength pref }
-  when (off < 0) $ do
-     modify $ \st -> st { output = fromString s : output st
-                        , column = 0
-                        , newlines = newlines st + 1 }
-outp off s = do
-  st' <- get
-  let pref = prefix st'
-  when (column st' == 0 && usePrefix st' && not (null pref)) $ do
-    modify $ \st -> st{ output = fromString pref : output st
-                      , column = column st + realLength pref }
-  modify $ \st -> st{ output = fromString s : output st
-                    , column = column st + off
-                    , newlines = 0 }
-*/

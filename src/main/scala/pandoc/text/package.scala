@@ -6,7 +6,6 @@ package object text {
   case class Pandoc(meta: Meta, content: List[Block])
 
   case class Meta(title: List[Inline], authors: List[List[Inline]], date: List[Inline])
-  type InlineList = List[Inline]
 
   sealed abstract class Alignment
   case object AlignLeft extends Alignment
@@ -14,7 +13,7 @@ package object text {
   case object AlignCenter extends Alignment
   case object AlignDefault extends Alignment
 
-  type ListAttributes = (Int, ListNumberStyle, ListNumberDelim)
+  case class ListAttributes(num: Int, style: ListNumberStyle, delim: ListNumberDelim)
   
   sealed abstract class ListNumberStyle
   case object DefaultStyle extends ListNumberStyle
@@ -31,18 +30,16 @@ package object text {
   case object OneParen extends ListNumberDelim
   case object TwoParens extends ListNumberDelim
   
-  type KeyValue = (String, String)
-  type Attr = (String, List[String], List[KeyValue])
-  val NullAttr: Attr = ("", Nil, Nil)
+  case class KeyValue(key: String, value: String)
+  case class Attr(id: String, classes: List[String], attrs: List[KeyValue])
+  val NullAttr = Attr("", Nil, Nil)
   
   type TableCell = List[Block]
-  type TableCellList = List[TableCell]
   
   type Format = String
   
-  type BlockList = List[Block]
   type DefnItem = (List[Inline], List[List[Block]])
-
+  
   sealed abstract class Block
   case class Plain(content: List[Inline]) extends Block
   case class Para(content: List[Inline]) extends Block
@@ -51,7 +48,7 @@ package object text {
   case class BlockQuote(content: List[Block]) extends Block
   case class OrderedList(attrs: ListAttributes, items: List[List[Block]]) extends Block
   case class BulletList(items: List[List[Block]]) extends Block
-  case class DefinitionList(items: List[(List[Inline], List[List[Block]])]) extends Block
+  case class DefinitionList(items: List[DefnItem]) extends Block
   case class Header(level: Int, content: List[Inline]) extends Block
   case object HorizontalRule extends Block
   case class Table(caption: List[Inline], alignments: List[Alignment], widths: List[Double], 
@@ -97,14 +94,16 @@ package object text {
   case object NormalCitation extends CitationMode
   
   def initializeParsers() {
-    parsers += manifest[Pandoc] -> (() => (regex("""Pandoc\s+"""r) ~> getParser[Meta] ~ listParser[Block]).map {
+    parsers += manifest[Pandoc] -> (() => (regex("""Pandoc\s+"""r) ~> getParser[Meta] ~ getParser[List[Block]]).map {
       case meta ~ content => Pandoc(meta, content)
     })
 
-    parsers += manifest[Meta] -> (() => (regex("""Meta\s+"""r) ~> listParser[Inline] ~ listParser[InlineList] ~ listParser[Inline]).map{
+    parsers += manifest[Meta] -> (() => 
+      ((regex("""\(\s*Meta\s+\{\s*docTitle\s*=\s*"""r) ~> getParser[List[Inline]] <~ regex("""\s*,\s*docAuthors\s*=\s*"""r)) ~ 
+          (getParser[List[List[Inline]]] <~ regex("""\s*,\s*docDate\s*=\s*"""r)) ~
+          (getParser[List[Inline]] <~ regex("""\s*\}\s*\)"""r))).map{
       case title ~ authors ~ date => Meta(title, authors, date)  
     })
-    parsers += manifest[InlineList] -> (() => listParser[Inline])
 
     parsers += manifest[Alignment] -> (() => 
       literal("AlignLeft").map((s) => AlignLeft) |
@@ -113,7 +112,9 @@ package object text {
       literal("AlignDefault").map((s) => AlignDefault)
     )
   
-    parsers += manifest[ListAttributes] -> (() => tripleParser(getParser[Int], getParser[ListNumberStyle], getParser[ListNumberDelim]))
+    parsers += manifest[ListAttributes] -> (() => tripleParser(getParser[Int], getParser[ListNumberStyle], getParser[ListNumberDelim]).map {
+      case (num, style, delim) => ListAttributes(num, style, delim)
+    })
 
     parsers += manifest[ListNumberStyle] -> (() =>
       literal("DefaultStyle").map((s) => DefaultStyle) |
@@ -132,34 +133,32 @@ package object text {
       literal("TwoParens").map((s) => TwoParens)
     )
 
-    parsers += manifest[KeyValue] -> (() => dupleParser(getParser[String], getParser[String]))
-    parsers += manifest[Attr] -> (() => tripleParser(getParser[String], listParser[String], listParser[KeyValue]))
-    parsers += manifest[Plain] -> (() => (regex("""Plain\s+"""r) ~> listParser[Inline]).map(Plain(_)))
-    parsers += manifest[Para] -> (() => (regex("""Para\s+"""r) ~> listParser[Inline]).map(Para(_)))
-    parsers += manifest[CodeBlock] -> (() => (regex("""CodeBlock\s+"""r) ~> getParser[Attr] ~ getParser[String]).map {
+    parsers += manifest[KeyValue] -> (() => dupleParser(getParser[String], getParser[String]).map{
+      case (key, value) => KeyValue(key, value)
+    })
+    parsers += manifest[Attr] -> (() => tripleParser(getParser[String], getParser[List[String]], getParser[List[KeyValue]]).map{
+      case (id, classes, attrs) => Attr(id, classes, attrs)
+    })
+    parsers += manifest[Plain] -> (() => (regex("""Plain\s+"""r) ~> getParser[List[Inline]]).map(Plain(_)))
+    parsers += manifest[Para] -> (() => (regex("""Para\s+"""r) ~> getParser[List[Inline]]).map(Para(_)))
+    parsers += manifest[CodeBlock] -> (() => (regex("""CodeBlock\s+"""r) ~> getParser[Attr] ~  getParser[String]).map {
         case attr ~ str => CodeBlock(attr, str)
       })
     parsers += manifest[RawBlock] -> (() => (regex("""RawBlock\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
         case format ~ str => RawBlock(format, str)
       })
-    parsers += manifest[BlockQuote] -> (() => (regex("""BlockQuote\s+"""r) ~> listParser[Block]).map(BlockQuote(_)))
-    parsers += manifest[BlockList] -> (() => listParser[Block])
-    parsers += manifest[OrderedList] -> (() => (regex("""OrderedList\s+"""r) ~> getParser[ListAttributes] ~ listParser[BlockList]).map {
+    parsers += manifest[BlockQuote] -> (() => (regex("""BlockQuote\s+"""r) ~> getParser[List[Block]]).map(BlockQuote(_)))
+    parsers += manifest[OrderedList] -> (() => (regex("""OrderedList\s+"""r) ~> getParser[ListAttributes] ~ getParser[List[List[Block]]]).map {
         case attrs ~ items => OrderedList(attrs, items)
       })
-    parsers += manifest[BulletList] -> (() => (regex("""BulletList\s+"""r) ~> listParser[BlockList]).map(BulletList(_)))
-    parsers += manifest[DefnItem] -> (() => 
-        ((regex("""\(\s*"""r) ~> listParser[Inline] <~ regex("""\s*,\s*"""r)) ~ 
-         (listParser[BlockList] <~ regex("""\s*\)"""r))).map {
-          case term ~ defn => (term, defn)
-        })
-    parsers += manifest[DefinitionList] -> (() => (regex("""DefinitionList\s+"""r) ~> listParser[DefnItem]).map(DefinitionList(_)))
-    parsers += manifest[Header] -> (() => (regex("""Header\s+"""r) ~> getParser[Int] ~ listParser[Inline]).map{
+    parsers += manifest[BulletList] -> (() => (regex("""BulletList\s+"""r) ~> getParser[List[List[Block]]]).map(BulletList(_)))
+    parsers += manifest[DefnItem] -> (() => dupleParser(getParser[List[Inline]], getParser[List[List[Block]]]))
+    parsers += manifest[DefinitionList] -> (() => (regex("""DefinitionList\s+"""r) ~> getParser[List[DefnItem]]).map(DefinitionList(_)))
+    parsers += manifest[Header] -> (() => (regex("""Header\s+"""r) ~> getParser[Int] ~ getParser[List[Inline]]).map{
         case level ~ content => Header(level, content)
       })
-    parsers += manifest[TableCellList] -> (() => listParser[Block])
-    parsers += manifest[Table] -> (() => (regex("""Table\s+"""r) ~> listParser[Inline] ~ listParser[Alignment] ~ listParser[Double] ~
-        listParser[TableCell] ~ listParser[TableCellList]).map {
+    parsers += manifest[Table] -> (() => (regex("""Table\s+"""r) ~> getParser[List[Inline]] ~ getParser[List[Alignment]] ~ getParser[List[Double]] ~
+        getParser[List[TableCell]] ~ getParser[List[List[TableCell]]]).map {
           case caption ~ alignments ~ widths ~ headers ~ rows => Table(caption, alignments, widths, headers, rows)
       })
     parsers +=  manifest[Block] -> (() =>
@@ -198,10 +197,10 @@ package object text {
     parsers += manifest[Superscript] -> labelWithContent[Inline, Superscript]("Superscript", Superscript(_))
     parsers += manifest[Subscript] -> labelWithContent[Inline, Subscript]("Subscript", Subscript(_))
     parsers += manifest[SmallCaps] -> labelWithContent[Inline, SmallCaps]("SmallCaps", SmallCaps(_))
-    parsers += manifest[Quoted] -> (() => (regex("""Quoted\s+"""r) ~> getParser[QuoteType] ~ listParser[Inline]).map {
+    parsers += manifest[Quoted] -> (() => (regex("""Quoted\s+"""r) ~> getParser[QuoteType] ~ getParser[List[Inline]]).map {
         case kind ~ content => Quoted(kind, content)
       })
-    parsers += manifest[Cite] -> (() => (regex("""Cite\s+"""r) ~> listParser[Citation] ~ listParser[Inline]).map {
+    parsers += manifest[Cite] -> (() => (regex("""Cite\s+"""r) ~> getParser[List[Citation]] ~ getParser[List[Inline]]).map {
         case citations ~ content => Cite(citations, content)
       })
     parsers += manifest[Code] -> (() => (regex("""Code\s+"""r) ~> getParser[Attr] ~ getParser[String]).map {
@@ -213,13 +212,13 @@ package object text {
   	parsers += manifest[RawInline] -> (() => (regex("""RawInline\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
   	    case format ~ str => RawInline(format, str)
   	  })
-  	parsers += manifest[Link] -> (() => (regex("""Link\s+"""r) ~> listParser[Inline] ~ getParser[Target]).map {
+  	parsers += manifest[Link] -> (() => (regex("""Link\s+"""r) ~> getParser[List[Inline]] ~ getParser[Target]).map {
   	    case linkStr ~ target => Link(linkStr, target)
   	  })
-  	parsers += manifest[Image] -> (() => (regex("""Image\s+"""r) ~> listParser[Inline] ~ getParser[Target]).map {
+  	parsers += manifest[Image] -> (() => (regex("""Image\s+"""r) ~> getParser[List[Inline]] ~ getParser[Target]).map {
   	    case altStr ~ target => Image(altStr, target)
   	  })
-  	parsers += manifest[Note] -> (() => (regex("""Note\s+"""r) ~> listParser[Block]).map(Note(_)))
+  	parsers += manifest[Note] -> (() => (regex("""Note\s+"""r) ~> getParser[List[Block]]).map(Note(_)))
       
     parsers += manifest[Inline] -> (() => 
         getParser[Str] |
@@ -241,8 +240,8 @@ package object text {
         getParser[Note]
       )
         
-    parsers += manifest[Citation] -> (() => (regex("""Citation\s+"""r) ~> getParser[String] ~ listParser[Inline] 
-          ~ listParser[Inline] ~ getParser[CitationMode] ~ getParser[Int] ~ getParser[Int]).map {
+    parsers += manifest[Citation] -> (() => (regex("""Citation\s+"""r) ~> getParser[String] ~ getParser[List[Inline]] 
+          ~ getParser[List[Inline]] ~ getParser[CitationMode] ~ getParser[Int] ~ getParser[Int]).map {
             case id ~ prefix ~ suffix ~ mode ~ noteNum ~ hash => Citation(id, prefix, suffix, mode, noteNum, hash) 
         })
       

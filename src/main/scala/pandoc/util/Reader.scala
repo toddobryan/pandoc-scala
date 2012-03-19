@@ -6,33 +6,49 @@ import scala.util.parsing.combinator.RegexParsers
 import pandoc.text
 
 object Reader extends RegexParsers {
+  val normalChar = regex("""[^"\\]"""r)
+  val backslashEscape = regex("""\\[abfnrtv"&'\\]"""r)
+  val controlCode = regex("""\\(NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL)"""r)
+  val decimalEscape = regex("""\\\d+"""r)
+  val hexEscape = regex("""\\[xX][0-9a-fA-F]+"""r)
+  val octalEscape = regex("""\\[oO][0-7]+"""r)
+
+  
   val parsers = mutable.Map[Manifest[_], () => Parser[_]](
     manifest[Int] -> (() => regex("""-?[1-9][0-9]*"""r).map(_.toInt)),
     manifest[Double] -> (() => regex("""-?([0-9]*\.[0-9]+|[0-9]+\.?)"""r).map(_.toDouble)),
     manifest[Boolean] -> (() => regex("""true|false"""r).map(_.toBoolean)),
-    manifest[String] -> (() => regex("""\"([^"\\]|\[bfnrt\\'"])*\""""r))
-  )
+    manifest[String] -> (() => (literal("\"") ~ rep(normalChar | backslashEscape | controlCode | decimalEscape | hexEscape | octalEscape) ~ literal("\"")).map({
+      case openQ ~ chars ~ closeQ => openQ + chars.mkString + closeQ
+    })))
   text.initializeParsers()
   
+  override def skipWhitespace = false
+  
   def getParser[T](implicit man: Manifest[T]): Parser[T] = {
-    parsers(man)().asInstanceOf[Parser[T]]
+    if (man <:< manifest[List[_]]) {
+      val itemType = man.typeArguments(0)
+      listParser(itemType).asInstanceOf[Parser[T]]
+    } else {
+      parsers(man)().asInstanceOf[Parser[T]]
+    }
   }
   
   def openParser(s: String): Parser[String] = {
-    (literal(s) <~ regex("""\s*"""r))
+    (regex("""\s*"""r) ~> literal(s) <~ regex("""\s*"""r))
   }
   
   val comma: Parser[String] = regex("""\s*,\s*"""r)
   
   def closeParser(s: String): Parser[String] = {
-    (regex("""\s*"""r) ~> literal(s))
+    (regex("""\s*"""r) ~> literal(s) <~ regex("""\s*"""r))
   }
   
   def listParser[T](implicit man: Manifest[T]): Parser[List[T]] = {
-    val itemParser = parsers(man)().asInstanceOf[Parser[T]] 
+    val itemParser = getParser(man)
     (openParser("[") ~> repsep(itemParser, comma) <~ closeParser("]"))
   }
-  
+    
   def dupleParser[A, B](aParser: Parser[A], bParser: Parser[B])(implicit manA: Manifest[A], manB: Manifest[B]): Parser[(A, B)] = {
     ((openParser("(") ~> aParser <~ comma) ~ (bParser <~ closeParser(")"))).map({
       case a ~ b => (a, b)
@@ -51,7 +67,7 @@ object Reader extends RegexParsers {
   }
     
   def read[T](input: String)(implicit man: Manifest[T]): ParseResult[T] = {
-    parse(parsers(man)().asInstanceOf[Parser[T]], input)
+    parse(getParser[T], input)
   }
   
   def parsedPlusRest[T](res: ParseResult[T]): Option[(T, String)] = {
