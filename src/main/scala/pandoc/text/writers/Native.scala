@@ -72,6 +72,7 @@ object Native {
       	case KeyValue(key, value) => "(%s,%s)".format(show(key), show(value))
       	case ListAttributes(num, style, delim) => 
       	  "(%s,%s,%s)".format(show(num), show(style), show(delim))
+      	case Target(url, title) => "(%s,%s)".format(url, title)
       	case x => x.toString
       }
     }

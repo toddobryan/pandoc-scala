@@ -60,7 +60,7 @@ package object text {
   case object SingleQuote extends QuoteType
   case object DoubleQuote extends QuoteType
 
-  type Target = (String, String)
+  case class Target(url: String, title: String)
 
   sealed abstract class MathType
   case object DisplayMath extends MathType
@@ -183,7 +183,7 @@ package object text {
     parsers += manifest[Target] -> (() => 
         ((regex("""\(\s*"""r) ~> getParser[String]) ~ 
             (regex("""\s*,\s*"""r) ~> getParser[String] <~ regex("""\s*\)"""r))).map {
-              case url ~ title => (url, title)
+              case url ~ title => Target(url, title)
             })
 
     parsers += manifest[MathType] -> (() =>

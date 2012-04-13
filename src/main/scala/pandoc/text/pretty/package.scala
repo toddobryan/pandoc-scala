@@ -2,24 +2,12 @@ package pandoc.text
 
 package object pretty {
   case class RenderState(
-      output: List[String], // in reverse order
-      prefix: String,
-      usePrefix: Boolean,
-      lineLength: Option[Int],
-      column: Int,
-      newLines: Int) {
-    
-    def withOutput(newOutput: List[String]) = RenderState(newOutput, prefix, usePrefix, 
-        lineLength, column, newLines)
-    def withPrefix(newPrefix: String) = RenderState(output, newPrefix, usePrefix,
-        lineLength, column, newLines)
-    def withUsePrefix(newUsePrefix: Boolean) = RenderState(output, prefix, newUsePrefix,
-        lineLength, column, newLines)
-    def withColumn(newColumn: Int) = RenderState(output, prefix, usePrefix,
-        lineLength, newColumn, newLines)
-    def withNewLines(newNewLines: Int) = RenderState(output, prefix, usePrefix,
-        lineLength, column, newNewLines)
-  }
+      output: List[String] = Nil, // in reverse order
+      prefix: String = "",
+      usePrefix: Boolean = true,
+      lineLength: Option[Int] = None,
+      column: Int = 0,
+      newLines: Int = 2)
   
   sealed abstract class D {
     def isBlank: Boolean = false
@@ -79,9 +67,9 @@ package object pretty {
       val rawPref = state.prefix
       if (state.column == 0 && state.usePrefix && rawPref != "") {
         val pref: List[Char] = rawPref.toCharArray.toList.reverse.dropWhile(_.isSpaceChar).reverse
-        state.withOutput(pref.mkString :: state.output).withColumn(state.column + realLength(pref))
+        state.copy(output = pref.mkString :: state.output, column = state.column + realLength(pref))
       } else if (offset < 0) {
-        state.withOutput(s :: state.output).withColumn(0).withNewLines(state.newLines + 1)
+        state.copy(output = s :: state.output, column = 0, newLines = state.newLines + 1)
       } else {
         state
       }
@@ -89,16 +77,16 @@ package object pretty {
       val pref = state.prefix
       val statePrime: RenderState = 
         if (state.column == 0 && state.usePrefix && pref != "") {
-    	  state.withOutput(pref :: state.output).withColumn(state.column + realLength(pref.toCharArray.toList))
+    	  state.copy(output = pref :: state.output, column = state.column + realLength(pref.toCharArray.toList))
         } else {
           state
         }
-      statePrime.withOutput(s :: statePrime.output).withColumn(statePrime.column + offset).withNewLines(0)
+      statePrime.copy(output = s :: statePrime.output, column = statePrime.column + offset, newLines = 0)
     }
   }
   
   def render(lineLength: Option[Int], doc: Doc): String = {
-    renderDoc(doc, RenderState(Nil, "", true, lineLength, 0, 2)).output.reverse.mkString
+    renderDoc(doc, RenderState(lineLength = lineLength)).output.reverse.mkString
   }
   
   def renderDoc(doc: Doc, state: RenderState): RenderState = {
@@ -110,11 +98,11 @@ package object pretty {
       case Nil => state
       case Text(offset, s) :: xs => renderList(xs, outp(offset, s, state))
       case Prefixed(pref, doc) :: xs => {
-        renderList(xs, renderDoc(doc, state.withPrefix(state.prefix + pref)).
-            withPrefix(state.prefix))
+        renderList(xs, renderDoc(doc, state.copy(prefix = state.prefix + pref)).
+            copy(prefix = state.prefix))
       }
       case Flush(doc) :: xs => {
-        renderList(xs, renderDoc(doc, state.withUsePrefix(false)).withUsePrefix(state.usePrefix))
+        renderList(xs, renderDoc(doc, state.copy(usePrefix = false)).copy(usePrefix = state.usePrefix))
       }
       case BeforeNonBlank(doc) :: x0 :: xs if (x0.isBlank) => renderList(x0 :: xs, state)
       case BeforeNonBlank(doc) :: Nil => renderList(Nil, state)
@@ -153,9 +141,9 @@ package object pretty {
       case Block(width, lns) :: xs => {
         val indent = state.column - realLength(state.prefix.toCharArray.toList)
         val modState = 
-          if (indent > 0) state.withPrefix(state.prefix + (" " * indent))
+          if (indent > 0) state.copy(prefix = state.prefix + (" " * indent))
           else state
-        renderList(xs, renderDoc(blockToDoc(width, lns), modState).withPrefix(state.prefix))
+        renderList(xs, renderDoc(blockToDoc(width, lns), modState).copy(prefix = state.prefix))
       }
     }
   }
