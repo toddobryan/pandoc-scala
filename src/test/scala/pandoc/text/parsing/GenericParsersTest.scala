@@ -59,4 +59,33 @@ so what happens"""
       Some("some lines\nin a row\nand a blank", "\n\nso what happens"))
   }
 
+  test("romanNumeral") {
+    assert(parsedPlusRest(parse(romanNumeral(false), "")) === None)
+    assert(parsedPlusRest(parse(romanNumeral(false), "i")) === Some(1, ""))
+    assert(parsedPlusRest(parse(romanNumeral(false), "mcmxciv")) === Some(1994, ""))
+    assert(parsedPlusRest(parse(romanNumeral(false), "dcclxvi")) === Some(766, ""))
+    assert(parsedPlusRest(parse(romanNumeral(true), "MMMCMXCIX")) === Some(3999, ""))
+    assert(parsedPlusRest(parse(romanNumeral(true), "XCIVabc")) === Some(94, "abc"))
+    assert(parsedPlusRest(parse(romanNumeral(false), "abc")) === None)
+  }
+    
+  test("domain") {
+    assert(parsedPlusRest(parse(domain, "www.beloit.edu")) === Some("www.beloit.edu", ""))
+    assert(parsedPlusRest(parse(domain, "www.pen-island.com is here")) === Some("www.pen-island.com", " is here"))    
+  }
+  
+  test("emailAddress") {
+    assert(parsedPlusRest(parse(emailAddress, "todd.obryan@jefferson.kyschools.us")) ===
+      Some(("todd.obryan@jefferson.kyschools.us", "mailto:todd.obryan@jefferson.kyschools.us"), ""))
+  }
+  
+  test("withHorizDisplacement") {
+    assert(parsedPlusRest(parse(withHorizDisplacement(romanNumeral(true)), "XV 2")) ===
+      Some((15, 2), " 2"))
+  }
+  
+  test("withRaw") {
+    assert(parsedPlusRest(parse(withHorizDisplacement(romanNumeral(true)), "XV 2")) ===
+      Some((15, "XV"), " 2"))
+  }
 }
