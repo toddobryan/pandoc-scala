@@ -85,7 +85,12 @@ so what happens"""
   }
   
   test("withRaw") {
-    assert(parsedPlusRest(parse(withHorizDisplacement(romanNumeral(true)), "XV 2")) ===
+    assert(parsedPlusRest(parse(withRaw(romanNumeral(true)), "XV 2")) ===
       Some((15, "XV"), " 2"))
+  }
+  
+  test("characterReference") {
+    assert(parsedPlusRest(parse(characterReference, "&amp;stuff")) ===
+      Some("&", "stuff"))
   }
 }

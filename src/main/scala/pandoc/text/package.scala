@@ -53,7 +53,7 @@ package object text {
   case object HorizontalRule extends Block
   case class Table(caption: List[Inline], alignments: List[Alignment], widths: List[Double], 
                    headers: List[TableCell], rows: List[List[TableCell]]) extends Block
-  case object EmptyBlock extends Block
+  case object EmptyBlock extends Block // Null
   
 
   sealed abstract class QuoteType
