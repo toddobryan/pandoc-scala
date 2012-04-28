@@ -110,11 +110,14 @@ object GenericParsers extends RegexParsers {
       val res: ParseResult[A] = parser(in)
       println("res.next.source = " + res.next.source.toString)
       println("res.next.offset = " + res.next.offset)
-      val offset2 = res.next.source.length - res.next.offset
-      val offset1 = in.source.length - in.offset
+      val offset2 = (res.next.source.length - in.source.length) + res.next.offset
+      val offset1 = in.offset
       val raw = in.source.subSequence(in.offset, in.offset + (offset2 - offset1)).toString
       res.map((_, raw))
     }
   }
   
+  def nullBlock(implicit state: ParserState): Parser[Block] = {
+    """.""".r ^^^ Null
+  }
 }
