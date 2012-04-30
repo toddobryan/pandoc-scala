@@ -1,8 +1,7 @@
 package pandoc.text.parsing
 
-import genparser.Parser
-import genparser.Success
-import genparser.<~>
+import genparser.{Parser, Reader, Result, Ok, Error, Failure, Success, <~>}
+
 import genparser.CharParsers._
 
 import pandoc.text._
@@ -59,97 +58,111 @@ object GenericParsers {
     listOfCharsInBalanced(open, close, content) ^^ ((cs: List[Char]) => cs.mkString)
   }
   
-  /*def romanNumeral(isUpper: Boolean)(implicit state: ParserState): Parser[Int] = {
-    val lowerRomanDigits = List("i", "v", "x", "l", "c", "d", "m")
-    val romanDigits: List[String] = {
-      if (!isUpper) lowerRomanDigits else lowerRomanDigits.map(_.toUpperCase)
+  def romanNumeral(isUpper: Boolean): Parser[Int, ParserState, Char] = {
+    val lowerRomanDigits = List('i', 'v', 'x', 'l', 'c', 'd', 'm')
+    val romanDigits: List[Char] = {
+      if (!isUpper) lowerRomanDigits else lowerRomanDigits.map(_.toUpper)
     }
-    val i = romanDigits(0)
-    val v = romanDigits(1)
-    val x = romanDigits(2)
-    val l = romanDigits(3)
-    val c = romanDigits(4)
-    val d = romanDigits(5)
-    val m = romanDigits(6)
-    val thousands: Parser[Int] = regex("%s{0,3}".format(m).r) ^^ ((ms: String) => 1000 * ms.length)
-    def genericRoman(ten: String, five: String, one: String, mult: Int): Parser[Int] = {
-      guard(regex("[%s]".format(romanDigits.mkString).r)) ~>
-      ((regex("%s".format(one + ten).r) ^^^ 9 * mult)
-      | (regex("%s".format(one + five).r) ^^^ 4 * mult)
-      | ((regex("%s?".format(five).r) ^^ ((ds: String) => 5 * mult * ds.length))
-          ~ (regex("%s{0,3}".format(one).r) ^^ ((cs: String) => 1 * mult * cs.length))).map {
-            case ((fh: Int) ~ (oh: Int)) => fh + oh
-          })
+    val i = lit(romanDigits(0))
+    val v = lit(romanDigits(1))
+    val x = lit(romanDigits(2))
+    val l = lit(romanDigits(3))
+    val c = lit(romanDigits(4))
+    val d = lit(romanDigits(5))
+    val m = lit(romanDigits(6))
+    val thousands: Parser[Int, ParserState, Char] = m.count(0, 3) ^^ ((ms: List[Char]) => 1000 * ms.length)
+    def genericRoman(ten: Parser[Char, ParserState, Char],
+                     five: Parser[Char, ParserState, Char],
+                     one: Parser[Char, ParserState, Char],
+                     mult: Int): Parser[Int, ParserState, Char] = {
+      oneOf(romanDigits.mkString).lookAhead ~>
+      ((one <~> ten ^^^ 9 * mult)
+       | (one <~> five ^^^ 4 * mult)
+       | ((five.count(0, 1) ^^ ((fs: List[Char]) => 5 * mult * fs.length)) <~>
+          ((one.count(0, 3)) ^^ ((os: List[Char]) => 1 * mult * os.length))) ^^ {
+            case fv <~> on => fv + on
+         })
     }
-    val hundreds: Parser[Int] = genericRoman(m, d, c, 100)
-    val tens: Parser[Int] = genericRoman(c, l, x, 10)
-    val ones: Parser[Int] = genericRoman(x, v, i, 1)
-    (thousands ~ hundreds ~ tens ~ ones).map {
-      case ((th: Int) ~ (hu: Int) ~ (te: Int) ~ (on: Int)) => th + hu + te + on
+    val hundreds: Parser[Int, ParserState, Char] = genericRoman(m, d, c, 100)
+    val tens: Parser[Int, ParserState, Char] = genericRoman(c, l, x, 10)
+    val ones: Parser[Int, ParserState, Char] = genericRoman(x, v, i, 1)
+    (thousands <~> hundreds <~> tens <~> ones) ^^ {
+      case ((th: Int) <~> (hu: Int) <~> (te: Int) <~> (on: Int)) => th + hu + te + on
     }
   }
   
-  def domain(implicit state: ParserState): Parser[String] = {
-    val domainChar = """[a-zA-Z0-9\-]"""
+  def domain: Parser[String, ParserState, Char] = {
+    val domainChar = alphaNum | lit('-')
     """%s+(\.%s+)+""".format(domainChar, domainChar).r
-  }
-  
-  def emailAddress(implicit state: ParserState): Parser[(String, String)] = {
-    ("""[a-zA-Z0-9][a-zA-Z0-9\-+_.]*@""".r ~ domain).map {
-      // the Haskell version calls escapeURI on the mailto: string, but there can't be
-      // spaces in it, so I don't think it's necessary
-      case (addr ~ dom) => (addr + dom, ("mailto:" + addr + dom))
+    domainChar.+ <~> ((lit('.') <~> domainChar.+) ^^ { case dot <~> name => (dot :: name).mkString}).+ ^^ {
+      case name <~> names => name.mkString + names.mkString
     }
   }
   
-  def uri(implicit state: ParserState): Parser[(String, String)] = {
+  def emailAddress: Parser[(String, String), ParserState, Char] = {
+    val addr: Parser[String, ParserState, Char] = (alphaNum <~> (alphaNum | oneOf("-+_.")).*) ^^ {
+      case fst <~> rst => (fst :: rst).mkString
+    }
+    (addr <~ lit('@') <~> domain) ^^ {
+      case ad <~> dom => val email = ad + "@" + dom; (email, "mailto:" + email)
+    }
+  }
+  
+  /*def uri(implicit state: ParserState): Parser[(String, String)] = {
     //TODO isAllowedInURI
     val protocols = """(https?|ftp|file|mailto|news|telnet):""".r
     protocols.map((s: String) => (s, s))
-  }
+  }*/
   
-  def withHorizDisplacement[A](parser: Parser[A])(implicit state: ParserState): Parser[(A, Int)] = new Parser[(A, Int)] {
-    def apply(in: Input): ParseResult[(A, Int)] = {
-      val col1 = in.pos.column
-      val res: ParseResult[A] = parser(in)
-      val col2 = res.next.pos.column
-      res.map((_, col2 - col1))
+  def withHorizDisplacement[A](parser: Parser[A, ParserState, Char]): Parser[(A, Int), ParserState, Char] = {
+    new Parser[(A, Int), ParserState, Char] {
+      def apply(state: ParserState, in: Reader[Char]): Result[(A, Int), ParserState, Char] = {
+        val col1 = in.currPos.column
+        parser(state, in) match {
+          case Ok(a, newState, next) => val col2 = next.currPos.column; Ok((a, col2 - col1), newState, next)
+          case e: Error[_, _] => e
+        }
+      }
     }
   }
   
-  def withRaw[A](parser: Parser[A])(implicit state: ParserState): Parser[(A, String)] = new Parser[(A, String)] {
-    def apply(in: Input): ParseResult[(A, String)] = {
-      val res: ParseResult[A] = parser(in)
-      val offset2 = (res.next.source.length - in.source.length) + res.next.offset
-      val offset1 = in.offset
-      val raw = in.source.subSequence(in.offset, in.offset + (offset2 - offset1)).toString
-      res.map((_, raw))
+  def withRaw[A](parser: Parser[A, ParserState, Char]): Parser[(A, String), ParserState, Char] = {
+    new Parser[(A, String), ParserState, Char] {
+      def apply(state: ParserState, in: Reader[Char]): Result[(A, String), ParserState, Char] = {
+        parser(state, in) match {
+          case Ok(a, newState, next) => {
+            def accChars(r: Reader[Char], cs: List[Char]): List[Char] = {
+              if (in.currPos == next.currPos) cs.reverse
+              else accChars(r.rest, r.first :: cs)
+            }
+            val raw = accChars(in, Nil).mkString
+            Ok((a, raw), newState, next)
+          }
+          case e: Error[_, _] => e
+        }
+      }
     }
   }
   
-  def nullBlock(implicit state: ParserState): Parser[Block] = {
-    ".".r ^^^ EmptyBlock
-  }
+  def nullBlock: Parser[Block, ParserState, Char] = anyChar ^^^ EmptyBlock
   
-  def failIfStrict(implicit state: ParserState): Parser[Null] =  new Parser[Null] {
-    def apply(in: Input): ParseResult[Null] = {
-      if (state.strict) Failure("strict mode", in)
-      else Success(null, in) 
+  def failIfStrict[Elem] = new Parser[Unit, ParserState, Elem] {
+    def apply(state: ParserState, in: Reader[Elem]): Result[Unit, ParserState, Elem] = {
+      if (state.strict) Error(state, in, "strict mode")
+      else Ok((), state, in)
     }
   }
   
-  def failUnlessLHS(implicit state: ParserState): Parser[Null] = new Parser[Null] {
-    def apply(in: Input): ParseResult[Null] = {
-      if (state.literateHaskell) Success(null, in)
-      else Failure("not in literate Haskell mode", in)
+  def failUnlessLHS[Elem] = new Parser[Unit, ParserState, Elem] {
+    def apply(state: ParserState, in: Reader[Elem]): Result[Unit, ParserState, Elem] = {
+      if (state.literateHaskell) Ok((), state, in)
+      else Error(state, in, "not in literate Haskell mode")
     }
   }
   
-  def escaped(parser: Parser[String])(implicit state: ParserState): Parser[String] = {
-    guard("\\") ~> parser
-  }
+  def escaped(parser: Parser[Char, ParserState, Char]) = lit('\\') ~> parser
     
-  def characterReference(implicit state: ParserState): Parser[String] = new Parser[String] {
+  def characterReference: Parser[Char, ParserState, Char] {
     def apply(in: Input): ParseResult[String] = {
       ("&" ~> """[^\s;]+""".r <~ ";")(in) match {
         case Success(res, next) => entityMap.get(res) match {

@@ -33,6 +33,12 @@ class ParseTest extends FunSuite {
     		Ok("blah", null, CharReader("whatever", Pos(1, 1))))
   }
   
+  test("count parser") {
+    expect(Ok(List('c', 'c'), null, CharReader("cc", Pos(1, 3)))) {
+      cParser.count(2)(null, CharReader("cccc", Pos(1, 1)))
+    }
+  }
+  
   test("| parser") {
     val cOrX = cParser | xParser
     assert(cOrX(null, CharReader("char", Pos(1, 1))) === Ok('c', null, CharReader("har", Pos(1, 2))))

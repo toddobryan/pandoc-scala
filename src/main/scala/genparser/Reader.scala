@@ -121,6 +121,34 @@ abstract class Parser[+T, +State, Elem] {
     this ^^ ((t: T) => u)
   }
   
+  def lookAhead: Parser[Unit, State, Elem] = new Parser[Unit, State, Elem] {
+    def apply(state: State, in: Reader[Elem]): Result[Unit, State, Elem] = {
+      this(state, in) match {
+        case Ok(_, _, _) => Ok((), state, in)
+        case e: Error[_, _] => e
+      }
+    }
+  }
+  
+  def count(exact: Int): Parser[List[T], State, Elem] = count(exact, exact)
+  
+  def count(min: Int, max: Int) = new Parser[List[T], State, Elem] {
+    def apply(state: State, in: Reader[Elem]): Result[List[T], State, Elem] = {
+      /* accumulates the answer in reverse order */
+      def parseAndAccum(st: State, r: Reader[Elem], acc: List[T]): Result[List[T], State, Elem] = {
+        if (acc == max) Ok(acc.reverse, st, r)
+        else Parser.this(st, r) match {
+          case Ok(t, newState, next) => parseAndAccum(newState, next, t :: acc)
+          case e: Error[_, _] => {
+            if (acc.length >= min) Ok(acc.reverse, st, r)
+            else e
+          }
+        }
+      }
+      parseAndAccum(state, in, Nil)
+    }
+  } 
+  
   def X: Parser[Unit, State, Elem] = new Parser[Unit, State, Elem] {
     def apply(state: State, in: Reader[Elem]): Result[Unit, State, Elem] = {
       this(state, in) match {
@@ -162,6 +190,10 @@ class ListParser[Elem, State](list: List[Elem]) extends Parser[List[Elem], State
   
 class Success[T, State, Elem](t: => T) extends Parser[T, State, Elem] {
   def apply(state: State, in: Reader[Elem]): Result[T, State, Elem] = Ok(t, state, in)
+}
+
+class Failure[T, State, Elem](msg: String) extends Parser[T, State, Elem] {
+  def apply(state: State, in: Reader[Elem]): Result[T, State, Elem] = Error(state, in, msg)
 }
 
 class SequencedParser[+T1, +T2, State, Elem](left: => Parser[T1, State, Elem], right: => Parser[T2, State, Elem])
@@ -209,6 +241,8 @@ object CharParsers {
   def anyChar[State] = new TestParser[Char, State]((c: Char) => true, "a character")
   def lit[State](c: Char) = new TestParser[Char, State](_ == c, "'%s'".format(c))
   def digit[State] = new TestParser[Char, State]((c: Char) => c.isDigit, "a digit")
+  def letter[State] = new TestParser[Char, State]((c: Char) => c.isLetter, "a letter")
+  def alphaNum[State] = digit[State] | letter[State]
   def noneOf[State](s: String) = new TestParser[Char, State](!s.contains(_), "a character not in '%s'".format(s))
   def oneOf[State](s: String) = new TestParser[Char, State](s.contains(_), "a character in '%s'".format(s))
   def string[State](s: String): Parser[String, State, Char] = new ListParser[Char, State](s.toList) ^^ ((cs: List[Char]) => cs.mkString)
