@@ -32,7 +32,7 @@ object Native {
       case DefinitionList(items) => {
         def toDoc(item: DefnItem): Doc = {
           item match {
-            case (term, defs) => text("(") <> text(show(term)) <> text(",") <> cr <>
+            case DefnItem(term, defs) => text("(") <> text(show(term)) <> text(",") <> cr <>
               nest(1, prettifyBlockLists(defs)) <> text(")")
           }
         }
@@ -41,8 +41,8 @@ object Native {
       case Table(caption, aligns, widths, header, rows) => {
         text("Table ") <> text(show(caption)) <>
           text(" ") <> text(show(aligns)) <> text(" ") <> text(show(widths)) %%
-          prettifyBlockLists(header) %%
-          prettyList(rows.map(prettifyBlockLists(_)))
+          prettifyBlockLists(header.map(_.wrapped)) %%
+          prettyList(rows.map((cells: List[TableCell]) => prettifyBlockLists(cells.map(_.wrapped))))
       }
       case block => text(show(block))
     }

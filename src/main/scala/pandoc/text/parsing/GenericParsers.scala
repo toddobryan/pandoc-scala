@@ -1,53 +1,65 @@
 package pandoc.text.parsing
-import scala.util.parsing.combinator.RegexParsers
+
+import genparser.Parser
+import genparser.Success
+import genparser.<~>
+import genparser.CharParsers._
 
 import pandoc.text._
 
-object GenericParsers extends RegexParsers {
+object GenericParsers {
   // many1Till(p, end) => (p +) <~ end
   // notFollowedBy'(p) => not(p)
-  
-  override def skipWhitespace: Boolean = false
-  
-  def anyLine(implicit state: ParserState): Parser[String] = {
-    """.*?\n""".r ^^ ((res: String) => res.dropRight(1))
+    
+  def anyLine: Parser[String, ParserState, Char] = {
+    (noneOf("\n").* <~ lit('\n')) ^^ (_.mkString)
   }
-
-  def spaceChar(implicit state: ParserState): Parser[String] = """[ \t]""".r
+  def spaceChar: Parser[Char, ParserState, Char] = oneOf(" \t")
+  def nonSpaceChar: Parser[Char, ParserState, Char] = noneOf("\t\n \r")
+  def skipSpaces: Parser[Null, ParserState, Char] = (spaceChar *) ^^^ null
+  def blankLine: Parser[Char, ParserState, Char] = skipSpaces ~> lit('\n')
+  def blankLines: Parser[String, ParserState, Char] = (blankLine.+) ^^ ((cs: List[Char]) => cs.mkString)
   
-  def nonspaceChar(implicit state: ParserState): Parser[String] = """[^\t\n \r]""".r
-  
-  def skipSpaces(implicit state: ParserState): Parser[String] = (spaceChar *) ^^^ ""
-  
-  def blankLine(implicit state: ParserState): Parser[String] = skipSpaces ~> "\n"
-  
-  def blankLines(implicit state: ParserState): Parser[String] = (blankLine +) ^^ ((ns: List[String]) => ns.mkString)
-  
-  def enclosed[A](start: Parser[Any], end: Parser[Any], content: Parser[A]): Parser[List[A]] = {
-    start ~> not(" ") ~> (content +) <~ end
+  def enclosed[A](start: Parser[Any, ParserState, Char], 
+                  end: Parser[Any, ParserState, Char],
+                  content: Parser[A, ParserState, Char]): Parser[List[A], ParserState, Char] = {
+    start.notFollowedBy(lit(' ')) ~> (content +) <~ end
   }
   
-  def stringAnyCase(str: String)(implicit state: ParserState): Parser[String] = {
-    ("(?iu)" + str).r
-  }
-  
-  def lineClump(implicit state: ParserState): Parser[String] = {
-    blankLines |
-    (((not(blankLine) ~> anyLine) +) ^^ ((lines: List[String]) => lines.mkString("\n")))
-  }
-  
-  def charsInBalanced(open: Char, close: Char, content: Parser[String]): Parser[String] = {
-    val openP: Parser[String] = "" + open
-    val closeP: Parser[String] = "" + close
-    def raw: Parser[List[String]] = {
-      (((not(openP | closeP) ~> content) +) ^^ ((strs: List[String]) => strs.mkString) |
-      (charsInBalanced(open, close, content) 
-        ^^ ((str: String) => "%c%s%c".format(open, close, str)))) *
+  def anyCaseListOfChars(chars: List[Char]): Parser[List[Char], ParserState, Char] = {
+    chars match {
+      case Nil => new Success(Nil)
+      case c :: cs => ((lit[ParserState](c.toLower) | lit[ParserState](c.toUpper)) <~> anyCaseListOfChars(cs)) ^^ {
+        case fst <~> rst => fst :: rst
+      }
     }
-    (openP ~> raw <~ closeP) ^^ ((strs: List[String]) => strs.mkString)
   }
   
-  def romanNumeral(isUpper: Boolean)(implicit state: ParserState): Parser[Int] = {
+  def stringAnyCase(str: String): Parser[String, ParserState, Char] = {
+    anyCaseListOfChars(str.toList) ^^ ((cs: List[Char]) => cs.mkString)
+  }
+  
+  def lineClump: Parser[String, ParserState, Char] = {
+    blankLines |
+    (((blankLine.X ~> anyLine) +) ^^ ((lines: List[String]) => lines.mkString("\n")))
+  }
+  
+  def listOfCharsInBalanced(open: Char, close: Char, 
+                      content: => Parser[Char, ParserState, Char]): Parser[List[Char], ParserState, Char] = {
+    def contentWithoutDelims: Parser[List[Char], ParserState, Char] = {
+      ((lit[ParserState](open) | lit[ParserState](close)).X ~> content) +
+    }
+    def raw: Parser[List[Char], ParserState, Char] = {
+      contentWithoutDelims | (listOfCharsInBalanced(open, close, content) ^^ ((res: List[Char]) => open +: res :+ close))
+    }
+    (lit(open) ~> raw <~ lit(close))
+  }
+  
+  def charInBalanced(open: Char, close: Char, content: => Parser[Char, ParserState, Char]): Parser[String, ParserState, Char] = {
+    listOfCharsInBalanced(open, close, content) ^^ ((cs: List[Char]) => cs.mkString)
+  }
+  
+  /*def romanNumeral(isUpper: Boolean)(implicit state: ParserState): Parser[Int] = {
     val lowerRomanDigits = List("i", "v", "x", "l", "c", "d", "m")
     val romanDigits: List[String] = {
       if (!isUpper) lowerRomanDigits else lowerRomanDigits.map(_.toUpperCase)
@@ -115,9 +127,6 @@ object GenericParsers extends RegexParsers {
     }
   }
   
-  def nullBlock(implicit state: ParserState): Parser[Block] = {
-    """.""".r ^^^ Null
-  }
   def nullBlock(implicit state: ParserState): Parser[Block] = {
     ".".r ^^^ EmptyBlock
   }
@@ -429,5 +438,5 @@ object GenericParsers extends RegexParsers {
     "clubs" -> "\u2663", // ♣ = black club suit (= shamrock)[f]
     "hearts" -> "\u2665", // ♥ = black heart suit (= valentine)[f]
     "diams" -> "\u2666" // ♦ = black diamond suit[f]
-  )
+  )*/
 }

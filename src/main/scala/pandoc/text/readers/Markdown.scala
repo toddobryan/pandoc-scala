@@ -1,12 +1,12 @@
 package pandoc.text.readers
 
-import scala.util.parsing.combinator.RegexParsers
+import genparser.Parser
 import pandoc.text.parsing.ParserState
 import pandoc.text._
 
-object Markdown extends RegexParsers {
-  def indentSpaces(implicit state: ParserState): Parser[String] = {
-    (" " * state.tabStop) | "\t"
+object Markdown {
+  def indentSpaces: Parser[List[Char], ParserState, Char] = {
+    
   }
   
   def nonindentSpaces(implicit state: ParserState): Parser[String] =  new Parser[String] {
