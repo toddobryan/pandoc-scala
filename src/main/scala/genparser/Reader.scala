@@ -209,6 +209,20 @@ class SequencedParser[+T1, +T2, State, Elem](left: => Parser[T1, State, Elem], r
   }
 }
 
+class ChoiceParser[+T, State, Elem](parsers: => List[Parser[T, State, Elem]])
+		extends Parser[T, State, Elem] {
+  def apply(state: State, in: Reader[Elem]): Result[T, State, Elem] = {
+    def applyParsers(pars: List[Parser[T, State, Elem]]): Result[T, State, Elem] = pars match {
+      case Nil => Error(state, in, "no parser in the choices matched")
+      case p :: ps => p(state, in) match {
+        case ok: Ok[_, _, _] => ok
+        case e: Error[_, _] => applyParsers(ps)
+      }
+    }
+    applyParsers(parsers)
+  }
+}
+
 class DisjointParser[+T, State, Elem](left: => Parser[T, State, Elem], right: => Parser[T, State, Elem]) 
 		extends Parser[T, State, Elem] {
   def apply(state: State, in: Reader[Elem]): Result[T, State, Elem] = {
