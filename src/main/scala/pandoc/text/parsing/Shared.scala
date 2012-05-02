@@ -45,6 +45,42 @@ object Shared {
     }
   }
   
+  def backslashEscapes(cs: List[Char]): Map[Char, String] = {
+    Map(cs.map((ch: Char) => ch -> List('\\', ch).mkString): _*)
+  }
+  
+  def escapeStringUsing(escapeTable: Map[Char, String], str: String): String = {
+    def helper(chars: List[Char]): String = {
+      chars match {
+        case Nil => ""
+        case c :: cs => {
+          val rest = helper(cs)
+          escapeTable.get(c) match {
+            case Some(esc) => esc + rest
+            case None => c.toString + rest
+          }
+        }
+      }  
+    }
+    helper(str.toList)
+  }
+  
+  def substitute[T](target: List[T], replacement: List[T], list: List[T]): List[T] = {
+    (target, replacement, list) match {
+      case (_, _ , Nil) => Nil
+      case (Nil, _, xs) => xs
+      case (_, _, x :: xs) => if (list.startsWith(target)) {
+        replacement ++ (substitute(target, replacement, list.drop(target.length)))
+      } else {
+        x :: substitute(target, replacement, xs)
+      }
+    }
+  }
+  
+  def removeLeadingTrailingSpace(s: String): String = {
+    removeLeadingSpace(removeTrailingSpace(s))
+  }
+
   def removeLeadingSpace(s: String): String = {
     s.dropWhile(" \n\t".contains(_))
   }
@@ -52,5 +88,5 @@ object Shared {
   def removeTrailingSpace(s: String): String = {
     removeLeadingSpace(s.reverse).reverse
   }
-
+  
 }

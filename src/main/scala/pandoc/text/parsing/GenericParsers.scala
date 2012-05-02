@@ -1,6 +1,6 @@
 package pandoc.text.parsing
 
-import genparser.{ChoiceParser, Parser, Reader, Result, Ok, Error, Failure, State, Success, <~>}
+import genparser.{ChoiceParser, Parser, Pos, GenericReader, Reader, Result, Ok, Error, Failure, State, Success, <~>}
 
 import genparser.CharParsers._
 
@@ -38,6 +38,15 @@ object GenericParsers {
   
   def stringAnyCase(str: String): Parser[String, ParserState, Char] = {
     anyCaseListOfChars(str.toList) ^^ ((cs: List[Char]) => cs.mkString)
+  }
+  
+  def parseFromString[A, State, Elem](parser: Parser[A, State, Elem], str: List[Elem]) = new Parser[A, State, Elem] {
+    def apply(state: State, in: Reader[Elem]): Result[A, State, Elem] = {
+      parser.apply(state, new GenericReader[Elem](Stream(str: _*), Pos(1, 1))) match {
+        case Ok(res, newState, _) => Ok(res, newState, in)
+        case Error(newState, _, msgs) => Error(newState, in, msgs)
+      }
+    }
   }
   
   def lineClump: Parser[String, ParserState, Char] = {
@@ -329,6 +338,75 @@ object GenericParsers {
     splitStringByIndices(indices.init, removeTrailingSpace(line))
   }
   
+  def gridPart(c: Char): Parser[(Int, Int), ParserState, Char] = {
+    for {
+      dashes <- lit(c).+
+      foo <- lit('+')
+    } yield (dashes.length, dashes.length + 1)
+  }
+  
+  def gridDashedLines(c: Char): Parser[List[(Int, Int)], ParserState, Char] = {
+    lit('+') ~> gridPart(c).+ <~ blankLine
+  }
+  
+  def removeFinalBar(s: String): String = {
+    s.reverse.dropWhile(" \t".contains(_)).dropWhile(_ == '|').reverse
+  }
+  
+  def gridTableSep(c: Char): Parser[Char, ParserState, Char] = {
+    gridDashedLines(c) ^^^ '\n'
+  }
+  
+  def mapM[A, B, State, Elem](f: A => Parser[B, State, Elem], as: List[A]): Parser[List[B], State, Elem] = {
+    as match {
+      case Nil => new Success(Nil)
+      case first :: rest => for {
+        b <- f(first)
+        bs <- mapM(f, rest)
+      } yield b :: bs
+    }
+  }
+  
+  def gridTableHeader(isHeadless: Boolean, block: Parser[Block, ParserState, Char]): Parser[(List[List[Block]], List[Alignment], List[Int]), ParserState, Char] = {
+    for {
+      filler1 <- blankLines.?
+      dashes <- gridDashedLines('-')
+      rawContent <- if (isHeadless) new Success(Nil) else (gridTableSep('=').X ~> lit('|') ~> (anyChar.+ ^^ ((cs: List[Char]) => cs.mkString)) <~ lit('\n')).+
+      filler2 <- if (isHeadless) new Success(Unit) else (gridTableSep('=') ^^^ Unit)
+      val linesPrime = dashes.map(_._2)
+      val indices = linesPrime.scanLeft(0)((x: Int, y: Int) => x + y)
+      val aligns = List.fill(linesPrime.length)(AlignDefault)
+      val rawHeads = if (isHeadless) {
+        List.fill(dashes.length)("")
+      } else {
+        rawContent.map(gridTableSplitLine(indices, _)).transpose.map(_.mkString(" "))
+      }
+      heads <- mapM((s: String) => parseFromString[List[Block], ParserState, Char](block.*, s.toList),
+      		        rawHeads.map(removeLeadingTrailingSpace(_)))
+    } yield (heads, aligns, indices)
+  }
+  
+  def gridTableRawLine(indices: List[Int]): Parser[List[String], ParserState, Char] = {
+    for {
+      filler <- lit('|')
+      line <- (anyChar.+ ^^ ((cs: List[Char]) => cs.mkString)) <~ lit('\n')
+    } yield gridTableSplitLine(indices, line)
+  }
+  
+  def gridTableRow(block: Parser[Block, ParserState, Char], indices: List[Int]): Parser[List[List[Block]], ParserState, Char] = {
+    for {
+      colLines <- gridTableRawLine(indices).+
+      val cols = colLines.transpose.map((strs: List[String]) => removeOneLeadingSpace(strs).mkString("\n") + "\n")
+    } yield cols
+  }
+  
+  def removeOneLeadingSpace(xs: List[String]): List[String] = {
+    if (xs.forall((s: String) => s.startsWith(" ") || s == "")) {
+      xs.map((s: String) => s.toList.drop(1).mkString)
+    } else {
+      xs
+    }
+  }
   
   val entityMap: Map[String, Char] = Map(
     "quot" -> '"', //  = quotation mark (= APL quote)

@@ -24,6 +24,16 @@ case class Pos(line: Int, column: Int) {
   }
 }
 
+/**
+ * doesn't update the position as it reads!!!
+ */
+class GenericReader[Elem](val source: Stream[Elem], pos: Pos) extends Reader[Elem] {
+  def atEnd: Boolean = source.isEmpty
+  def first: Elem = source.head
+  def rest: GenericReader[Elem] = new GenericReader(source.tail, currPos)
+  def currPos: Pos = pos
+}
+
 class CharReader(val source: Stream[Char], pos: Pos) extends Reader[Char] {
   def atEnd: Boolean = source.isEmpty
   def first: Char = source.head
@@ -234,6 +244,10 @@ class ListParser[Elem, State](list: List[Elem]) extends Parser[List[Elem], State
 
 class State[T, State, Elem] extends Parser[State, State, Elem] {
   def apply(state: State, in: Reader[Elem]): Result[State, State, Elem] = Ok(state, state, in)
+}
+
+class Input[T, State, Elem] extends Parser[Reader[Elem], State, Elem] {
+  def apply(state: State, in: Reader[Elem]): Result[Reader[Elem], State, Elem] = Ok(in, state, in)
 }
   
 class Success[T, State, Elem](t: => T) extends Parser[T, State, Elem] {
