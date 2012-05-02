@@ -1,10 +1,12 @@
 package pandoc.text.parsing
 
-import genparser.{ChoiceParser, Parser, Reader, Result, Ok, Error, Failure, Success, <~>}
+import genparser.{ChoiceParser, Parser, Reader, Result, Ok, Error, Failure, State, Success, <~>}
 
 import genparser.CharParsers._
 
 import pandoc.text._
+
+import pandoc.text.parsing.Shared._
 
 object GenericParsers {
   // many1Till(p, end) => (p +) <~ end
@@ -279,13 +281,52 @@ object GenericParsers {
   
   def charRef: Parser[Inline, ParserState, Char] = characterReference ^^ ((c: Char) => Str(c.toString))
   
-  def tableWith[Sep, End](headerParser: Parser[(List[List[Block]], List[Alignment], List[Int]), ParserState, Char],
-      rowParser: (List[Int]) => Parser[List[List[Block]], ParserState, Char],
+  def tableWith[Sep, End](headerParser: Parser[(List[TableCell], List[Alignment], List[Int]), ParserState, Char],
+      rowParser: (List[Int]) => Parser[List[TableCell], ParserState, Char],
       lineParser: Parser[Sep, ParserState, Char],
       footerParser: Parser[End, ParserState, Char],
       captionParser: Parser[List[Inline], ParserState, Char]): Parser[Block, ParserState, Char] = {
-    captionParser.? <~> headerParser 
-    
+    for {
+      captionPrime <- captionParser.orElse(Nil)
+      headsAndAlignsAndIndices <- headerParser
+      val (heads, aligns, indices) = headsAndAlignsAndIndices
+      linesPrime <- rowParser(indices).sepEndBy(lineParser)
+      footer <- footerParser
+      caption <- if (captionPrime.isEmpty) captionParser.orElse(Nil) else new Success(captionPrime)
+      state <- new State[ParserState, ParserState, Char]()
+      val widths = widthsFromIndices(state.columns, indices)
+    } yield Table(caption, aligns, widths, heads, linesPrime)    
+  }
+  
+  def widthsFromIndices(numColumnsPrime: Int, indices: List[Int]): List[Double] = {
+    if (indices.isEmpty) Nil
+    else {
+      import scala.Math.max
+      val numColumns = max(numColumnsPrime, if (indices.isEmpty) 0 else indices.last)
+      val lengthsPrime = indices.zip(0 :: indices).map {
+        case (i1, i2) => i1 - i2
+      }
+      val lengths = (lengthsPrime.reverse match {
+        case Nil => Nil
+        case x :: Nil => List(x)
+        case x :: y :: zs => if (x < y && y - x <= 2) y :: y :: zs else x :: y :: zs
+      }).reverse
+      val totLength = lengths.sum
+      val quotient = max(totLength, numColumns) * 1.0
+      val fracs = lengths.map((l: Int) => l / quotient)
+      fracs.tail
+    }
+  }
+  
+  def gridTableWith(block: Parser[Block, ParserState, Char],
+      tableCaption: Parser[List[Inline], ParserState, Char],
+      isHeadless: Boolean): Parser[Block, ParserState, Char] = {
+    tableWith(gridTableHeader(isHeadless, block), gridTableRow(block), gridTableSep('-'), 
+              gridTableFooter, tableCaption)
+  }
+  
+  def gridTableSplitLine(indices: List[Int], line: String): List[String] = {
+    splitStringByIndices(indices.init, removeTrailingSpace(line))
   }
   
   

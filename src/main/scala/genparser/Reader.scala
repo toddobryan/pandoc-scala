@@ -52,16 +52,23 @@ object CharReader {
 
 abstract class Result[+T, State, Elem](val state: State, val next: Reader[Elem]) {
   def updateState[NewState](state: NewState): Result[T, NewState, Elem]
+  def flatMapWithNext[U](f: T => (State, Reader[Elem]) => Result[U, State, Elem]): Result[U, State, Elem]
   def map[U](f: (T => U)): Result[U, State, Elem]
 }
 case class Ok[T, State, Elem](result: T, override val state: State, override val next: Reader[Elem])
     extends Result[T, State, Elem](state, next) {
   def updateState[NewState](newState: NewState) = Ok[T, NewState, Elem](result, newState, next)
+  def flatMapWithNext[U](f: T => (State, Reader[Elem]) => Result[U, State, Elem]) = {
+    f(result)(state, next)
+  }
   def map[U](f: (T => U)) = Ok(f(result), state, next)
 }
 case class Error[State, Elem](override val state: State, override val next: Reader[Elem], messages: List[String])
     extends Result[Nothing, State, Elem](state, next) {
   def updateState[NewState](newState: NewState) = Error[NewState, Elem](newState, next, messages)
+  def flatMapWithNext[U](f: Nothing => (State, Reader[Elem]) => Result[U, State, Elem]) = {
+    this
+  }
   def map[U](f: (Nothing => U)) = this
 }
 object Error {
@@ -70,11 +77,32 @@ object Error {
 
 case class <~>[+T1, +T2](t1: T1, t2: T2)
 
-abstract class Parser[+T, +State, Elem] {
+object Parser {
+  def apply[T, State, Elem](f: (State, Reader[Elem]) => Result[T, State, Elem]) = new Parser[T, State, Elem] {
+    def apply(state: State, in: Reader[Elem]): Result[T, State, Elem] = f(state, in)
+  }
+}
+
+abstract class Parser[+T, +State, +Elem] extends ((State, Reader[Elem]) => Result[T, State, Elem]){
   def apply(state: State, in: Reader[Elem]): Result[T, State, Elem]
+  
+  def flatMap[U](f: T => Parser[U, State, Elem]): Parser[U, State, Elem] = {
+    Parser[U, State, Elem]{ (state: State, in: Reader[Elem]) => this(state, in).flatMapWithNext(f) }
+  }
+  
+  def map[U](f: T => U): Parser[U, State, Elem] = {
+    Parser[U, State, Elem]{ (state: State, in: Reader[Elem]) => this(state, in).map(f) }
+  }
 
   def ? : Parser[Option[T], State, Elem] = {
     this ^^ ((t: T) => Some(t)) | new Success(None)
+  }
+  
+  def orElse(default: T): Parser[T, State, Elem] = {
+    this.? ^^ {
+      case None => default
+      case Some(t) => t
+    }
   }
   
   def * : Parser[List[T], State, Elem] = new RepParser(this)
@@ -85,10 +113,26 @@ abstract class Parser[+T, +State, Elem] {
     }
   }
   
-  def repsep[U](sep: => Parser[U, State, Elem]): Parser[List[T], State, Elem] = {
+  def repSep[U](sep: => Parser[U, State, Elem]): Parser[List[T], State, Elem] = {
+    repSep1(sep) | 
+    this.? ^^ { 
+      case None => Nil
+      case Some(t) => List(t)
+    }
+  }
+  
+  def repSep1[U](sep: => Parser[U, State, Elem]): Parser[List[T], State, Elem] = {
     this <~> (sep ~> this).* ^^ {
       case t <~> ts => t :: ts
     }
+  }
+  
+  def sepEndBy[U](sep: => Parser[U, State, Elem]): Parser[List[T], State, Elem] = {
+    repSep(sep) <~ sep.?
+  }
+  
+  def sepEndBy1[U](sep: => Parser[U, State, Elem]): Parser[List[T], State, Elem] = {
+    repSep1(sep) <~ sep.?
   }
   
   def <~>[T2](right: => Parser[T2, State, Elem]): Parser[<~>[T, T2], State, Elem] = {
@@ -186,6 +230,10 @@ class ListParser[Elem, State](list: List[Elem]) extends Parser[List[Elem], State
       }
     }
   }
+}
+
+class State[T, State, Elem] extends Parser[State, State, Elem] {
+  def apply(state: State, in: Reader[Elem]): Result[State, State, Elem] = Ok(state, state, in)
 }
   
 class Success[T, State, Elem](t: => T) extends Parser[T, State, Elem] {
