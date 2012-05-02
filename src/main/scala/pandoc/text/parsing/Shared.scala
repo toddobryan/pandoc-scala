@@ -77,6 +77,10 @@ object Shared {
     }
   }
   
+  def stripTrailingNewlines(str: String): String = {
+    str.reverse.dropWhile(_ == '\n').reverse
+  }
+  
   def removeLeadingTrailingSpace(s: String): String = {
     removeLeadingSpace(removeTrailingSpace(s))
   }
@@ -89,4 +93,37 @@ object Shared {
     removeLeadingSpace(s.reverse).reverse
   }
   
+  def stripFirstAndLast(s: String): String = {
+    s.take(s.length - 1).drop(1)
+  }
+  
+  def camelCaseToHyphenated(s: String): String = {
+    def helper(chars: List[Char]): List[Char] = {
+      chars match {
+        case Nil => Nil
+        case a :: b :: rest if (a.isLower && b.isUpper) => a :: '-' :: b.toLower :: helper(rest)
+        case a :: rest => a.toLower :: helper(rest)
+      }
+    }
+    helper(s.toList).mkString
+  }
+  
+  def toRomanNumeral(num: Int): String = {
+    if (num >= 4000 || num < 0) "?"
+    else if (num >= 1000) "M" + toRomanNumeral(num - 1000)
+    else if (num >= 900) "CM" + toRomanNumeral(num - 900)
+    else if (num >= 500) "D" + toRomanNumeral(num - 500)
+    else if (num >= 400) "CD" + toRomanNumeral(num - 400)
+    else if (num >= 100) "C" + toRomanNumeral(num - 100)
+    else if (num >= 90) "XC" + toRomanNumeral(num - 90)
+    else if (num >= 50) "L" + toRomanNumeral(num - 50)
+    else if (num >= 40) "XL" + toRomanNumeral(num - 40)
+    else if (num >= 10) "X" + toRomanNumeral(num - 10)
+    else if (num >= 9) "IX" + toRomanNumeral(num - 9)
+    else if (num >= 5) "V" + toRomanNumeral(num - 5)
+    else if (num >= 4) "IV" + toRomanNumeral(num - 4)
+    else if (num >= 1) "I" + toRomanNumeral(num - 1)
+    else ""
+  }
+  }
 }
