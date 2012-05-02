@@ -408,6 +408,10 @@ object GenericParsers {
     }
   }
   
+  def compactifyCell(bs: List[Block]): List[Block] = {
+    compactify(List(bs)).head
+  }
+  
   val entityMap: Map[String, Char] = Map(
     "quot" -> '"', //  = quotation mark (= APL quote)
     "amp" -> '\u0026', // & = ampersand

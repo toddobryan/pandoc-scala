@@ -1,6 +1,7 @@
 package pandoc.text.parsing
 
 import pandoc.text.pretty.charWidth
+import pandoc.text.{Block, Para, Plain}
 
 object Shared {
   def splitBy[A](pred: A => Boolean, lst: List[A]): List[List[A]] = {
@@ -125,5 +126,24 @@ object Shared {
     else if (num >= 1) "I" + toRomanNumeral(num - 1)
     else ""
   }
+  
+  def compactify(items: List[List[Block]]): List[List[Block]] = {
+    (items.init, items.last) match {
+      case (_, Nil) => items
+      case (others, last) => last.last match {
+        case Para(a) => items.flatten.filter(isPara(_)) match {
+          case x :: Nil => others ++ List(last.init ++ Plain(a))
+          case _ => items
+        }
+        case _ => items
+      }
+    }
+  }
+  
+  def isPara(b: Block): Boolean = {
+    b match {
+      case Para(_) => true
+      case _ => false
+    }
   }
 }
