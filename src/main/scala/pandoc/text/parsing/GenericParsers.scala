@@ -394,10 +394,14 @@ object GenericParsers {
   }
   
   def gridTableRow(block: Parser[Block, ParserState, Char], indices: List[Int]): Parser[List[List[Block]], ParserState, Char] = {
+    def stringParser(str: String): Parser[List[Block], ParserState, Char] = {
+      parseFromString(block.*, str.toList) ^^ (compactifyCell _)
+    }
     for {
       colLines <- gridTableRawLine(indices).+
       val cols = colLines.transpose.map((strs: List[String]) => removeOneLeadingSpace(strs).mkString("\n") + "\n")
-    } yield cols
+      parser <- mapM((stringParser _), cols)
+    } yield parser
   }
   
   def removeOneLeadingSpace(xs: List[String]): List[String] = {
@@ -411,6 +415,18 @@ object GenericParsers {
   def compactifyCell(bs: List[Block]): List[Block] = {
     compactify(List(bs)).head
   }
+  
+  def gridTableFooter = blankLines
+  
+  def readWith[A, Elem](parser: Parser[A, ParserState, Elem], state: ParserState, in: Reader[Elem]): A = {
+    parser(state, in) match {
+      case Ok(a, _, _) => a
+      case Error(_, _, msgs) => throw new Exception(msgs.mkString("\n"))
+    }
+  }
+  
+  // def testStringWith[]
+  // don't think we need, since it's for testing
   
   val entityMap: Map[String, Char] = Map(
     "quot" -> '"', //  = quotation mark (= APL quote)

@@ -19,6 +19,7 @@ case object InDoubleQuote extends QuoteContext
 case object NoQuote extends QuoteContext
 
 case class Key(content: List[Inline])
+class KeyTable extends Map[Key, Target]
 
 case class Context(raw: Boolean = false, list: ParserContext = NullState, 
     quote: QuoteContext = NoQuote, maxNestingLevel: Int = 6)
@@ -47,4 +48,10 @@ case class ParserState(
   applyMacros: Boolean = false, // TODO: macros not supported yet, because that's a whole nother lib
   macros: List[String] = Nil    // TODO: should be List[Macro]
 )
+
+object InlineParsers {
+  def toKey(inline: List[Inline]): Key = {
+    
+  }
+}
 

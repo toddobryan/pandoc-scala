@@ -132,7 +132,7 @@ object Shared {
       case (_, Nil) => items
       case (others, last) => last.last match {
         case Para(a) => items.flatten.filter(isPara(_)) match {
-          case x :: Nil => others ++ List(last.init ++ Plain(a))
+          case x :: Nil => others ++ List(last.init ++ List(Plain(a)))
           case _ => items
         }
         case _ => items
