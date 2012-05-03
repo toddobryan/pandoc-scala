@@ -243,7 +243,7 @@ object GenericParsers {
           numParsers.map(d(_))
       })
     }
-    new ChoiceParser(listParsers)
+    new ChoiceParser(listParsers: _*)
   }
   
   def inPeriod(numParser: Parser[(ListNumberStyle, Int), ParserState, Char]): Parser[ListAttributes, ParserState, Char] = {

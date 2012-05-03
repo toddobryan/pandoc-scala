@@ -242,7 +242,7 @@ class ListParser[Elem, State](list: List[Elem]) extends Parser[List[Elem], State
   }
 }
 
-class State[T, State, Elem] extends Parser[State, State, Elem] {
+class State[State, Elem] extends Parser[State, State, Elem] {
   def apply(state: State, in: Reader[Elem]): Result[State, State, Elem] = Ok(state, state, in)
 }
 
@@ -271,7 +271,7 @@ class SequencedParser[+T1, +T2, State, Elem](left: => Parser[T1, State, Elem], r
   }
 }
 
-class ChoiceParser[+T, State, Elem](parsers: => List[Parser[T, State, Elem]])
+class ChoiceParser[+T, State, Elem](parsers: Parser[T, State, Elem]*)
 		extends Parser[T, State, Elem] {
   def apply(state: State, in: Reader[Elem]): Result[T, State, Elem] = {
     def applyParsers(pars: List[Parser[T, State, Elem]]): Result[T, State, Elem] = pars match {
@@ -281,7 +281,7 @@ class ChoiceParser[+T, State, Elem](parsers: => List[Parser[T, State, Elem]])
         case e: Error[_, _] => applyParsers(ps)
       }
     }
-    applyParsers(parsers)
+    applyParsers(parsers.toList)
   }
 }
 

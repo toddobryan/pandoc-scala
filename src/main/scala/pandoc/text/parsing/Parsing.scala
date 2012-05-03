@@ -1,7 +1,13 @@
 package pandoc.text.parsing
 
-import pandoc.text.Inline
-import pandoc.text.Target
+import shapeless.SybClass._
+import shapeless.TypeOperators._
+import shapeless.Poly1
+
+import genparser._
+
+import pandoc.text._
+
 
 case class SourcePos(sourceName: String, line: Int, column: Int)
 
@@ -50,8 +56,51 @@ case class ParserState(
 )
 
 object InlineParsers {
+  object lowercase extends Poly1 {
+    implicit def caseInline = at[Inline]((in: Inline) => in match {
+      case Str(s) => Str(s.toLowerCase)
+      case Math(t, s) => Math(t, s.toLowerCase)
+      case Code(attr, s) => Code(attr, s.toLowerCase)
+      case RawInline(f, s) => RawInline(f, s.toLowerCase)
+      case LineBreak => Space
+      case x => x
+    })
+    implicit def default[T] = at[T](t => t)
+  }
+  
   def toKey(inline: List[Inline]): Key = {
-    
+    Key(everywhere(lowercase)(inline))
+  }
+  
+  def fromKey(key: Key): List[Inline] = key.content
+  
+  def lookupKeySrc(table: KeyTable, key: Key): Option[Target] = {
+    table.get(key)
+  }
+  
+  def failUnlessSmart[Elem] = Parser[Unit, ParserState, Elem] {
+    (state: ParserState, in: Reader[Elem]) => {
+      if (state.smart) Ok((), state, in)
+      else Error(state, in, "not in smart typography mode")
+    }
+  }
+  
+  def smartPunctuation(inlineParser: Parser[Inline, ParserState, Char]): Parser[Inline, ParserState, Char] = {
+    failUnlessSmart[Char] ~> new ChoiceParser(quoted(inlineParser), apostrophe, dash, ellipses)
+  }
+  
+  def apostrophe: Parser[Inline, ParserState, Char] = oneOf("'\u2019") ^^^ Str("\u2019")
+  
+  def quoted(inlineParser: Parser[Inline, ParserState, Char]): Parser[Inline, ParserState, Char] = {
+    doubleQuoted(inlineParser) | singleQuoted(inlineParser)
+  }
+  
+  def withQuoteContext(context: QuoteContext, parser: Parser[Inline, ParserState, Char]): Parser[Inline, ParserState, Char] = {
+    for {
+      oldState <- new State[ParserState, Char]()
+      val oldQuoteContext = oldState.context.quote
+      
+    } yield 
   }
 }
 
