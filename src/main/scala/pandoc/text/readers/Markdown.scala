@@ -4,7 +4,7 @@ import genparser.Parser
 import pandoc.text.parsing.ParserState
 import pandoc.text._
 
-object Markdown {
+/*object Markdown {
   def indentSpaces: Parser[List[Char], ParserState, Char] = {
     
   }
@@ -87,4 +87,4 @@ object Markdown {
     }
     escapedCharPrime ^^ strToInline
   }
-}
+}*/

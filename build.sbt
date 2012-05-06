@@ -14,7 +14,8 @@ resolvers ++= Seq(
 
 libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "1.7.1" % "test",
-  "com.chuusai" %% "shapeless" % "1.2.0"
+  "com.chuusai" %% "shapeless" % "1.2.0",
+  "org.scalaz" %% "scalaz-core" % "6.0.4"
 )
 
 scalacOptions += "-deprecation"

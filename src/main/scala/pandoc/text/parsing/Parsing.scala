@@ -100,7 +100,7 @@ object InlineParsers {
       oldState <- new State[ParserState, Char]()
       val oldQuoteContext = oldState.context.quote
       
-    } yield 
+    } yield Space
   }
 }
 
