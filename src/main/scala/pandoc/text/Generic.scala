@@ -6,17 +6,18 @@ import shapeless.Poly._
 object Generic {
   import shapeless.SybClass._
   
-  class EverywherePrimeAux[F <: Poly] extends Poly
+  type EverywhereDown[F <: Poly, T] = HomAux[EverywhereDownAux[F], T]
   
-  object EverywherePrimeAux {
-    implicit def default[F <: Poly, T](implicit data : DataT[EverywhereAux[F], T], f : HomAux[F, T]) =
-      Case1Aux[EverywhereAux[F], T, T](t => data.gmapT(f(t)))
+  class EverywhereDownAux[F <: Poly] extends Poly
+  
+  object EverywhereDownAux {
+    implicit def default[F <: Poly, T](implicit data : DataT[EverywhereDownAux[F], T], f : HomAux[F, T]) =
+      Case1Aux[EverywhereDownAux[F], T, T](t => data.gmapT(f(t)))
   }
   
-  def everywherePrime[F <: Poly](f: F) = new EverywhereAux[f.type]
-  
-  def bottomUp[F <: Poly, T](f: F)(t: T)(implicit e: Everywhere[F, T]): T = {
-    everywhere(f)(t)
+  def bottomUp[T](f: PartialFunction[Any, Any], t: T): T = {
+    
   }
-
+  
+  def topDown[F <: Poly](f: F) = everywhereDown(f)
 }

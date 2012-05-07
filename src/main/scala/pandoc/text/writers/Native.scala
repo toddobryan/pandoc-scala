@@ -2,16 +2,16 @@ package pandoc.text.writers
 
 import java.io.PrintStream
 import pandoc.text.Writer
-import pandoc.text.WriterOptions
 import pandoc.text._
 import pandoc.text.pretty.{cat, char, cr, nest, render, space, text, Doc}
+import pandoc.text.Shared.WriterOptions
 
 object Native {
   def writeNative(opts: WriterOptions, doc: Pandoc): String = {
-    val colWidth: Option[Int] = if (opts.wrapText) Some(opts.columns) else None
+    val colWidth: Option[Int] = if (opts.switches.wrapText) Some(opts.columns) else None
     val blocks: Doc = prettyList(doc.content.map(prettyBlock(_)))
     val withMaybeHead = 
-      if (opts.standalone) text("Pandoc (" + show(doc.meta) + ")") %% blocks %% cr
+      if (opts.switches.standalone) text("Pandoc (" + show(doc.meta) + ")") %% blocks %% cr
       else blocks 
     render(colWidth, withMaybeHead)
   }

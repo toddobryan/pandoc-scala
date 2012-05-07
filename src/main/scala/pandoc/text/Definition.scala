@@ -1,5 +1,6 @@
 package pandoc.text
 
+object Definition {
   case class Pandoc(meta: Meta, content: List[Block])
 
   case class Meta(title: List[Inline], authors: List[List[Inline]], date: List[Inline])
@@ -89,4 +90,4 @@ package pandoc.text
   case object AuthorInText extends CitationMode 
   case object SuppressAuthor extends CitationMode
   case object NormalCitation extends CitationMode
-
+}

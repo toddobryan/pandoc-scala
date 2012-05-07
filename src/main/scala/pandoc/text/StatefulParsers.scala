@@ -1,6 +1,5 @@
 package pandoc.text
 
-import pandoc.text.parsing.StatefulReader
 import scala.util.parsing.combinator.RegexParsers
 import scala.util.parsing.input.Reader
 import scala.util.parsing.input.Position

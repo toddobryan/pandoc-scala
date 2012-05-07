@@ -1,6 +1,5 @@
 package pandoc.text
 
-import Pretty.charWidth
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -9,10 +8,16 @@ import java.text.ParseException
 import scalaz.State
 import scalaz.Scalaz._
 
+import shapeless.Poly._
+
 import pandoc.text.highlighting.kate.Types.{Style, Pygments}
+import pandoc.text.Generic.bottomUp
+
+import Pretty.charWidth
+import Definition._
 
 object Shared {
-  def splitBy[A](pred: A => Boolean, lst: List[A]): List[List[A]] = {
+  def splitBy[A](pred: (A) => Boolean, lst: List[A]): List[List[A]] = {
     lst match {
       case Nil => Nil
       case _ => {
@@ -230,7 +235,12 @@ object Shared {
     case _ => false
   }
   
-  def normalize = null // TODO: need topDown and bottomUp
+  def normalize(doc: Pandoc): Pandoc = {
+    doc // TODO: bottomUp and topDown
+    // topDown removeEmptyBlocks .
+    // topDown consolidateInlines .
+    // bottomUp (removeEmptyInlines . removeTrailingInlineSpaces)
+  }
   
   def removeEmptyBlocks(in: List[Block]): List[Block] = in match {
     case EmptyBlock :: xs => removeEmptyBlocks(xs)
@@ -296,7 +306,19 @@ object Shared {
     case Nil => Nil
   }
   
-  def stringify(in: List[Inline]) = null // TODO: need queryWith
+  def stringify(inlines: List[Inline]): String = { // TODO: need queryWith
+    def go(in: Inline): String = {
+      in match {
+        case Space => " "
+        case Str(x) => x
+        case Code(_, x) => x
+        case Math(_, x) => x
+        case LineBreak => " "
+        case _ => ""
+      }
+    }
+    inlines.map(go(_)).mkString
+  }
   
   def compactify(items: List[List[Block]]): List[List[Block]] = {
     (items.init, items.last) match {
@@ -340,8 +362,8 @@ object Shared {
         (lastNum, usedIdents) = lastNumAndUsedIdents
         ident = uniqueIdent(titlePrime, usedIdents)
         lastNumPrime = lastNum.take(level)
-        newNum: List[Int] = if (lastNumPrime.length >= level) lastNumPrime.init :+ (lastNumPrime.last + 1)
-                            else lastNum ++ List.fill(level - lastNum.length - 1)(0) :+ 1
+        newNum = if (lastNumPrime.length >= level) lastNumPrime.init :+ (lastNumPrime.last + 1)
+                 else lastNum ++ List.fill(level - lastNum.length - 1)(0) :+ 1
         _ <- put (newNum, (ident :: usedIdents))
         (sectionContents, rest) = xs.span((blk: Block) => !headerLtEq(level, blk))
         sectionContentsPrime <- hierarchicalizeWithIds(sectionContents)
@@ -376,7 +398,17 @@ object Shared {
   
   def isHeaderBlock(block: Block): Boolean = block.isInstanceOf[Header]
   
-  def headerShift(n: Int, doc: Pandoc): Pandoc = null // TODO: need bottomUp
+  def headerShift(n: Int, doc: Pandoc): Pandoc = {
+    import shapeless.Poly1
+    import shapeless.SybClass._
+    import shapeless.TypeOperators._
+    import pandoc.text.Generic._
+    object shift extends Poly1 {
+      implicit def caseHeader = at[Header]((h: Header) => Header(h.level + n, h.content))
+      implicit def default[T] = at[T](t => t)
+    }
+    everywhere(shift)(doc)
+  }
   
   sealed abstract class HtmlMathMethod
   case object PlainMath extends HtmlMathMethod

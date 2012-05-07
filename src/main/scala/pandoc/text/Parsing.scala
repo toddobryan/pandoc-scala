@@ -410,7 +410,7 @@ object Parsing extends StatefulParsers[ParserState] {
                     tableCaption: Parser[List[Inline]], 
                     isHeadless: Boolean): Parser[Block] = {
     tableWith(gridTableHeader(isHeadless, block), gridTableRow(block), gridTableSep('-'),
-              gridTableFooter, gridTableCaption)
+              gridTableFooter, tableCaption)
   }
   
   def gridTableSplitLine(indices: List[Int], line: String): List[String] = {
@@ -445,8 +445,14 @@ object Parsing extends StatefulParsers[ParserState] {
       } yield b :: bs
     }
   }
+  
+  private def liftM[A, B](f: A => B, pa: Parser[A]): Parser[B] = {
+    for {
+      a <- pa
+    } yield f(a)
+  }
 
-  def gridTableHeader(isHeadless: Boolean, block: Parser[Block]): Parser[(List[List[Block]], List[Alignment], List[Int])] = {
+  def gridTableHeader(isHeadless: Boolean, block: Parser[Block]): Parser[(List[TableCell], List[Alignment], List[Int])] = {
     for {
       _ <- blankLines.?
       dashes <- gridDashedLines('-')
@@ -459,7 +465,7 @@ object Parsing extends StatefulParsers[ParserState] {
       rawHeads = if (isHeadless) List.fill(dashes.length)("")
                  else rawContent.map(gridTableSplitLine(indices, _)).transpose.map(_.mkString(" "))
       heads <- mapM((s: String) => parseFromString(block.*, s), rawHeads.map(removeLeadingTrailingSpace(_)))
-    } yield (heads, aligns, indices)
+    } yield (heads.map(TableCell(_)), aligns, indices)
   }
   
   def gridTableRawLine(indices: List[Int]): Parser[List[String]] = {
@@ -468,14 +474,14 @@ object Parsing extends StatefulParsers[ParserState] {
       line <- ".+".r <~ elem('\n')
     } yield gridTableSplitLine(indices, line)
   }
+
   
-  def gridTableRow(block: Parser[Block], indices: List[Int]): Parser[List[List[Block]]] = {
+  def gridTableRow(block: Parser[Block])(indices: List[Int]): Parser[List[TableCell]] = {
     for {
-      colLines <- gridTableRawLine(indices).+
+      colLines <- gridTableRawLine(indices).*
       cols = colLines.transpose.map((strs: List[String]) => removeOneLeadingSpace(strs).mkString("\n") + "\n")
-      
-    }
-    
+      res <- mapM((str: String) => parseFromString(block.*, str) ^^ ((bs: List[Block]) => compactifyCell(bs)), cols)
+    } yield res.map(TableCell(_))
   }
   
   def removeOneLeadingSpace(xs: List[String]): List[String] = {
@@ -484,7 +490,14 @@ object Parsing extends StatefulParsers[ParserState] {
     else xs
   }
   
-    
+  def compactifyCell(bs: List[Block]): List[Block] = {
+    compactify(List(bs)).head
+  }
+  
+  def gridTableFooter: Parser[String] = blankLines
+  
+  
+  
   val entityMap: Map[String, Char] = Map(
     "quot" -> '"', //  = quotation mark (= APL quote)
     "amp" -> '\u0026', // & = ampersand
