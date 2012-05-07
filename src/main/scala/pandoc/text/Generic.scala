@@ -14,5 +14,9 @@ object Generic {
   }
   
   def everywherePrime[F <: Poly](f: F) = new EverywhereAux[f.type]
+  
+  def bottomUp[F <: Poly, T](f: F)(t: T)(implicit e: Everywhere[F, T]): T = {
+    everywhere(f)(t)
+  }
 
 }

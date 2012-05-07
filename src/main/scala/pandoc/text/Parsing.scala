@@ -414,8 +414,76 @@ object Parsing extends StatefulParsers[ParserState] {
   }
   
   def gridTableSplitLine(indices: List[Int], line: String): List[String] = {
+    splitStringByIndices(indices.init, removeTrailingSpace(line)).tail.map(removeFinalBar(_))
+  }
+  
+  def gridPart(c: Char): Parser[(Int, Int)] = {
+    for {
+      dashes <- elem(c).+
+      _ <- elem('+')
+    } yield (dashes.length, dashes.length + 1)
+  }
+  
+  def gridDashedLines(c: Char): Parser[List[(Int, Int)]] = {
+    elem('+') ~> gridPart(c).+ <~ blankLine
+  }
+  
+  def removeFinalBar(s: String): String = {
+    s.reverse.dropWhile(_ == '|').dropWhile(" \t".contains(_)).reverse
+  }
+  
+  def gridTableSep(c: Char): Parser[Char] = {
+    gridDashedLines(c) ^^^ '\n'
+  }
+  
+  private def mapM[A, B](f: A => Parser[B], as: Seq[A]): Parser[List[B]] = {
+    as match {
+      case Nil => success(Nil)
+      case first :: rest => for {
+        b <- f(first)
+        bs <- mapM(f, rest)
+      } yield b :: bs
+    }
+  }
+
+  def gridTableHeader(isHeadless: Boolean, block: Parser[Block]): Parser[(List[List[Block]], List[Alignment], List[Int])] = {
+    for {
+      _ <- blankLines.?
+      dashes <- gridDashedLines('-')
+      rawContent <- if (isHeadless) success(Stream.iterate("")(_ => ""))
+                    else (not(gridTableSep('=')) ~> elem('|') ~> ".+".r <~ elem('\n')).+
+      _ <- if (isHeadless) success(()) else gridTableSep('=') ^^^ ()
+      linesPrime = dashes.map(_._2)
+      indices = linesPrime.scanLeft(0)((x: Int, y: Int) => x + y)
+      aligns = List.fill(linesPrime.length)(AlignDefault)
+      rawHeads = if (isHeadless) List.fill(dashes.length)("")
+                 else rawContent.map(gridTableSplitLine(indices, _)).transpose.map(_.mkString(" "))
+      heads <- mapM((s: String) => parseFromString(block.*, s), rawHeads.map(removeLeadingTrailingSpace(_)))
+    } yield (heads, aligns, indices)
+  }
+  
+  def gridTableRawLine(indices: List[Int]): Parser[List[String]] = {
+    for {
+      _ <- elem('|')
+      line <- ".+".r <~ elem('\n')
+    } yield gridTableSplitLine(indices, line)
+  }
+  
+  def gridTableRow(block: Parser[Block], indices: List[Int]): Parser[List[List[Block]]] = {
+    for {
+      colLines <- gridTableRawLine(indices).+
+      cols = colLines.transpose.map((strs: List[String]) => removeOneLeadingSpace(strs).mkString("\n") + "\n")
+      
+    }
     
   }
+  
+  def removeOneLeadingSpace(xs: List[String]): List[String] = {
+    def startsWithSpace(s: String) = (s == "" || s.startsWith(" "))
+    if (xs.forall(startsWithSpace(_))) xs.map(_.drop(1))
+    else xs
+  }
+  
     
   val entityMap: Map[String, Char] = Map(
     "quot" -> '"', //  = quotation mark (= APL quote)
