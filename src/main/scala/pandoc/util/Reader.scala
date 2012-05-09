@@ -3,7 +3,7 @@ package pandoc.util
 import scala.collection.mutable
 import scala.util.parsing.combinator.RegexParsers
 
-import pandoc.text._
+import pandoc.text.Definition._
 
 object Reader extends RegexParsers {
   val normalChar = regex("""[^"\\]"""r)

@@ -1,7 +1,5 @@
 package pandoc.text.readers
 
-import genparser.Parser
-//import pandoc.text.parsing.ParserState
 import pandoc.text._
 
 /*object Markdown {

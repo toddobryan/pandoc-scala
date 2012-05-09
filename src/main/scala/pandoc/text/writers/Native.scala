@@ -2,6 +2,7 @@ package pandoc.text.writers
 
 import java.io.PrintStream
 import pandoc.text.Writer
+import pandoc.text.Definition._
 import pandoc.text._
 import pandoc.text.pretty.{cat, char, cr, nest, render, space, text, Doc}
 import pandoc.text.Shared.WriterOptions

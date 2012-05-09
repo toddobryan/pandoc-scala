@@ -5,6 +5,9 @@ import org.scalatest.FunSuite
 import pandoc.util.Reader.{parsedPlusRest, read}
 import pandoc.text.writers.Native
 
+import Definition._
+import Shared.{WriterSwitchOptions, WriterOptions}
+
 class ParseTest extends FunSuite {
   test("parse native values") {
     assert(parsedPlusRest(read[List[Inline]]("""[Str "abc",Space,Emph [Str "emphasis"]]""")) === 
@@ -15,7 +18,7 @@ class ParseTest extends FunSuite {
     val htmlReaderNative = Source.fromURL(getClass.getResource("/tests/html-reader.native")).mkString
     val asNative = parsedPlusRest(read[Pandoc](htmlReaderNative))
     assert(asNative.isDefined)
-    val backToNative = Native.writeNative(new WriterOptions{ override def standalone = true }, asNative.get._1)
+    val backToNative = Native.writeNative(WriterOptions().copy(switches = WriterSwitchOptions().copy(standalone = true)), asNative.get._1)
     assert(backToNative === htmlReaderNative)
   }
 }

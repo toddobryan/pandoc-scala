@@ -1,9 +1,11 @@
-package pandoc.text.parsing
+package pandoc.text
 import org.scalatest.FunSuite
 import pandoc.util.Reader.parsedPlusRest
-import GenericParsers._
 
-class GenericParsersTest extends FunSuite {
+
+class ParsingTest extends FunSuite {
+  import Parsing._
+  
   def parsedPlusRest[T](res: ParseResult[T]): Option[(T, String)] = {
     res match {
       case Success(value, rest) => Some(value, rest.source.subSequence(res.next.offset, rest.source.length).toString)
@@ -19,12 +21,12 @@ class GenericParsersTest extends FunSuite {
   }
   
   test("spaceChar") {
-    assert(parsedPlusRest(parse(spaceChar, "  ")) === Some(" ", " "))
-    assert(parsedPlusRest(parse(spaceChar, "\t \t")) === Some("\t", " \t"))
+    assert(parsedPlusRest(parse(spaceChar, "  ")) === Some(' ', " "))
+    assert(parsedPlusRest(parse(spaceChar, "\t \t")) === Some('\t', " \t"))
   }
   
   test("skipSpaces") {
-    assert(parsedPlusRest(parse(skipSpaces, "    abc   ")) === Some("", "abc   "))
+    assert(parsedPlusRest(parse(skipSpaces, "    abc   ")) === Some((), "abc   "))
   }
   
   test("blankLine") {

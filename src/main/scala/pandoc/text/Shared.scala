@@ -4,17 +4,15 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.text.ParseException
-
 import scalaz.State
 import scalaz.Scalaz._
-
 import shapeless.Poly._
-
 import pandoc.text.highlighting.kate.Types.{Style, Pygments}
 import pandoc.text.Generic.bottomUp
-
 import Pretty.charWidth
 import Definition._
+import shapeless.Poly1
+import shapeless.SybClass._
 
 object Shared {
   def splitBy[A](pred: (A) => Boolean, lst: List[A]): List[List[A]] = {
@@ -398,17 +396,14 @@ object Shared {
   
   def isHeaderBlock(block: Block): Boolean = block.isInstanceOf[Header]
   
-  def headerShift(n: Int, doc: Pandoc): Pandoc = {
-    import shapeless.Poly1
-    import shapeless.SybClass._
-    import shapeless.TypeOperators._
-    import pandoc.text.Generic._
+  /*def headerShift[T](n: Int): (T) => T = {
+    import shapeless.SybClass.EverywhereAux._
     object shift extends Poly1 {
       implicit def caseHeader = at[Header]((h: Header) => Header(h.level + n, h.content))
       implicit def default[T] = at[T](t => t)
     }
-    everywhere(shift)(doc)
-  }
+    everywhere(shift)
+  }*/
   
   sealed abstract class HtmlMathMethod
   case object PlainMath extends HtmlMathMethod

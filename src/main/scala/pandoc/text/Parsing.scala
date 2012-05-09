@@ -4,7 +4,9 @@ import java.net.{URI, URISyntaxException, URLEncoder}
 
 import scala.math.max
 import scala.util.parsing.input.CharSequenceReader
+import scala.util.parsing.input.Reader
 
+import Definition._
 import Shared._
 
 case class SourcePos(sourceName: String, line: Int, column: Int)
@@ -17,13 +19,12 @@ sealed abstract class ParserContext
 case object ListItemState extends ParserContext
 case object NullState extends ParserContext
 
+case class Key(content: List[Inline])
+
 sealed abstract class QuoteContext
 case object InSingleQuote extends QuoteContext
 case object InDoubleQuote extends QuoteContext
 case object NoQuote extends QuoteContext
-
-case class Key(content: List[Inline])
-class KeyTable extends Map[Key, Target]
 
 case class Context(raw: Boolean = false, list: ParserContext = NullState, 
     quote: QuoteContext = NoQuote, maxNestingLevel: Int = 6)
@@ -65,7 +66,7 @@ object Parsing extends StatefulParsers[ParserState] {
   def blankLine: Parser[String] = skipSpaces ~> "\n"
   def blankLines: Parser[String] = blankLine.+ ^^ ((nls: List[String]) => nls.mkString)
   
-  def enclosed[T](start: Parser[_], end: Parser[_], parser: Parser[T]): Parser[List[T]] = {
+  def enclosed[T](start: Parser[Any], end: Parser[Any], parser: Parser[T]): Parser[List[T]] = {
     start ~> guard(not(" ")) ~> parser.+ <~ end
   }
   
@@ -151,7 +152,7 @@ object Parsing extends StatefulParsers[ParserState] {
   }
   
   def domain: Parser[String] = for {
-    first <- domainChar.+
+    first <- domainChar.+ ^^ ((cs: List[Char]) => cs.mkString)
     dom <- (elem('.') ~> listOfCharToString(domainChar.+)).+
   } yield (first :: dom).mkString(".")
 
@@ -207,19 +208,19 @@ object Parsing extends StatefulParsers[ParserState] {
       str <- ((inParens | ((innerPunct | uriChar) ^^ ((c: Char) => c.toString))).+) ^^ 
              ((strs: List[String]) => strs.mkString)
     } yield str
-    new Parser[(String, String)] { (in: Input) =>
+    StatefulParser[(String, String)] { (in: StatefulReader[ParserState, Elem]) =>
       parser(in).map((str: String) => (str, parseUri(escapeUri(str)))).
         mapPartial({
-          case (str, Some(uri)) if (protocols.contains(uri.getScheme)) => (str, uri)
+          case (str, Some(uri)) if (protocols.contains(uri.getScheme)) => (str, uri.toASCIIString)
         }, (arg: (String, Option[URI])) => "not a URI")  
     }
   }
   
   def withHorizDisplacement[A](parser: Parser[A]): Parser[(A, Int)] = {
     for {
-      inp1 <- getInput
-      result <- parser
-      inp2 <- getInput
+      inp1: Reader[Elem] <- getInput
+      result: A <- parser
+      inp2: Reader[Elem] <- getInput
     } yield (result, inp1.pos.column - inp2.pos.column)
   }
   
@@ -249,19 +250,19 @@ object Parsing extends StatefulParsers[ParserState] {
   
   def nullBlock: Parser[Block] = """.""".r ^^^ EmptyBlock
   
-  def failIfStrict: Parser[Unit] = new Parser[Unit] { (in: Input) =>
+  def failIfStrict: Parser[Unit] = StatefulParser[Unit] { (in: StatefulReader[ParserState, Elem]) =>
     if (!in.state.strict) success(())(in)
     else failure("strict mode")(in)
   }
   
-  def failUnlessLhs: Parser[Unit] = new Parser[Unit] { (in: Input) =>
+  def failUnlessLhs: Parser[Unit] = StatefulParser[Unit] { (in: StatefulReader[ParserState, Elem]) =>
     if (in.state.literateHaskell) success(())(in)
     else failure("not literate Haskell")(in)
   }
   
   def escaped(parser: Parser[Char]): Parser[Char] = elem('\\') ~> parser
   
-  def characterReference: Parser[Char] = new Parser[Char] { (in: Input) =>
+  def characterReference: Parser[Char] = StatefulParser[Char] { (in: StatefulReader[ParserState, Elem]) =>
     (elem('&') ~> listOfCharToString(nonspaceChar.+) <~ elem(';'))(in).
       map(entityMap.get(_)).
       mapPartial({ case Some(c) => c }, (optC: Option[Char]) => "entity not found")
@@ -309,7 +310,7 @@ object Parsing extends StatefulParsers[ParserState] {
       numParser <- List(decimal, exampleNum, defaultNum, romanOne,
                         lowerAlpha, lowerRoman, upperAlpha, upperRoman)
     } yield delimParser(numParser)
-    choice(listAttribParsers: _*)
+    choice(listAttribParsers.head, (listAttribParsers.tail): _*)
   }
   
   def inPeriod(num: Parser[(ListNumberStyle, Int)]): Parser[ListAttributes] = {
@@ -456,7 +457,7 @@ object Parsing extends StatefulParsers[ParserState] {
     for {
       _ <- blankLines.?
       dashes <- gridDashedLines('-')
-      rawContent <- if (isHeadless) success(Stream.iterate("")(_ => ""))
+      rawContent <- if (isHeadless) success(()) ^^^ List.fill(1000)("")
                     else (not(gridTableSep('=')) ~> elem('|') ~> ".+".r <~ elem('\n')).+
       _ <- if (isHeadless) success(()) else gridTableSep('=') ^^^ ()
       linesPrime = dashes.map(_._2)
