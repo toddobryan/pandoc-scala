@@ -101,17 +101,33 @@ object Markdown extends Parsing {
   }
   
   def parseMarkdown: Parser[Pandoc] = {
+    def handleExampleRef(examples: Map[String, Inline])(z: Inline): Inline = {
+      z match {
+        case Str(xs) if (xs.startsWith("@")) => examples.get(xs.substring(1)) match {
+          case Some(n) => Str(n)
+          case None => xs
+        }
+        case _ => z
+      }
+    }
     for {
       _ <- updateState((s: ParserState) => s.copy(context = s.context.copy(raw = true)))
       startPos <- getPosition
       st <- getState
       firstPassParser = referenceKey | (if (st.strict) pzero else noteBlock) | lineClump
-      docMinusKeys <- (firstPassParser.* <~ eof) ^^ // TODO: concat
+      docMinusKeys <- (firstPassParser.* <~ eof) ^^ (_.flatten)
       _ <- setInput(docMinusKeys)
       _ <- setPosition(startPos)
       stPrime <- getState
       reversedNotes = stPrime.notes
-    } yield { if (examples.isEmpty) doc else bottomUp(handleExampleRef)(doc)
+      _ <- updateState((s: ParserState) => s.copy(notes = reversedNotes.reverse))
+      titleAuthorDate <- titleBlock | Success((Nil, Nil, Nil))
+      (title, author, date) = titleAuthorDate
+      blocks <- parseBlocks
+      doc = Pandoc(Meta(title, author, date), blocks.filter(_ != EmptyBlock))
+      tempState <- getState
+      examples = tempState.examples
+    } yield { if (examples.isEmpty) doc else bottomUp(handleExampleRef(examples))(doc)
   }
     
   def inline: Parser[Inline] = whitespace
