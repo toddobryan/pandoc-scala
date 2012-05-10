@@ -1,6 +1,23 @@
 package pandoc.text
+
+import Parsing.ParseResult
+import Parsing.Success
+import Parsing.anyLine
+import Parsing.blankLine
+import Parsing.blankLines
+import Parsing.domain
+import Parsing.emailAddress
+import Parsing.enclosed
+import Parsing.lineClump
+import Parsing.parse
+import Parsing.parseAll
+import Parsing.romanNumeral
+import Parsing.skipSpaces
+import Parsing.spaceChar
+import Parsing.stringAnyCase
 import org.scalatest.FunSuite
-import pandoc.util.Reader.parsedPlusRest
+import pandoc.text.Parsing.literal
+import pandoc.text.Parsing.regex
 
 
 class ParsingTest extends FunSuite {
@@ -92,6 +109,6 @@ so what happens"""
   
   test("characterReference") {
     assert(parsedPlusRest(parse(characterReference, "&amp;stuff")) ===
-      Some("&", "stuff"))
+      Some('&', "stuff"))
   }
 }

@@ -54,7 +54,11 @@ case class ParserState(
   macros: List[String] = Nil    // TODO: should be List[Macro]
 )
 
-object Parsing extends StatefulParsers[ParserState] {
+trait Parsing extends StatefulParsers[ParserState] {
+  def parse[T](parser: Parser[T], in: String): ParseResult[T] = {
+    parser(new StatefulReader[ParserState, Elem](ParserState(), new CharSequenceReader(in)))
+  }
+  
   implicit def listOfCharToString(lcParser: Parser[List[Char]]): Parser[String] = {
     lcParser ^^ ((cs: List[Char]) => cs.mkString)
   }
@@ -216,23 +220,23 @@ object Parsing extends StatefulParsers[ParserState] {
     }
   }
   
-  def withHorizDisplacement[A](parser: Parser[A]): Parser[(A, Int)] = {
+  def withHorizDisplacement[A](parser: => Parser[A]): Parser[(A, Int)] = {
     for {
       inp1: Reader[Elem] <- getInput
       result: A <- parser
       inp2: Reader[Elem] <- getInput
-    } yield (result, inp1.pos.column - inp2.pos.column)
+    } yield (result, inp2.pos.column - inp1.pos.column)
   }
   
   private def readLines(src: String, num: Int): List[String] = {
     if (num == 0) Nil
     else {
-      val nextNewline = math.max(src.indexOf("\n"), src.length)
+      val nextNewline = math.max(src.indexOf("\n"), src.length - 1)
       src.substring(0, nextNewline) :: readLines(src.substring(nextNewline + 1), num - 1)
     }
   }
   
-  def withRaw[A](parser: Parser[A]): Parser[(A, String)] = {
+  def withRaw[A](parser: => Parser[A]): Parser[(A, String)] = {
     for {
       inp1 <- getInput
       result <- parser
@@ -262,10 +266,13 @@ object Parsing extends StatefulParsers[ParserState] {
   
   def escaped(parser: Parser[Char]): Parser[Char] = elem('\\') ~> parser
   
-  def characterReference: Parser[Char] = StatefulParser[Char] { (in: StatefulReader[ParserState, Elem]) =>
-    (elem('&') ~> listOfCharToString(nonspaceChar.+) <~ elem(';'))(in).
-      map(entityMap.get(_)).
-      mapPartial({ case Some(c) => c }, (optC: Option[Char]) => "entity not found")
+  def characterReference: Parser[Char] = StatefulParser[Char] { 
+    (in: StatefulReader[ParserState, Elem]) => {
+      (elem('&') ~> """[^ \t\n\r;]+""".r <~ elem(';'))(in).
+      map(entityMap.get(_)).mapPartial((oc: Option[Char]) => oc match {
+        case Some(c) => c
+      }, (oc: Option[Char]) => "entity not found")
+    }
   }
 
   def upperRoman: Parser[(ListNumberStyle, Int)] = for {

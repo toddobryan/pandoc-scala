@@ -36,28 +36,38 @@ trait StatefulParsers[State] extends RegexParsers {
     def apply(in: Input): ParseResult[T] = f(in.asInstanceOf[StatefulReader[State, Elem]])
   }
   
-  def choice[A](p1: Parser[A], ps: Parser[A]*): Parser[A] = {
+  def choice[A](ps: List[Parser[A]]): Parser[A] = {
     ps.toList match {
-      case Nil => p1
-      case p2 :: rest => p1 | choice[A](p2, rest: _*)
+      case Nil => failure("no choice matched")
+      case p1 :: rest => p1 | choice[A](rest)
     }
   }
   
-  def parse[T](parser: T, in: CharSequence): ParseResult[T] = {
-    val reader: Reader[Char] = new StatefulReader(ParserState(), new CharSequenceReader(in))
-    parse[T](parser, reader)
+  def sependby[T](item: Parser[T], sep: Parser[_]): Parser[List[T]] = {
+    repsep(item, sep) <~ sep.?
   }
-  
+    
   def getState: Parser[State] = {
     StatefulParser[State]((in: StatefulReader[State, Elem]) => Success(in.state, in))
   }
+  def updateState(f: (State) => State): Parser[Unit] = {
+    StatefulParser[Unit]((in: StatefulReader[State, Elem]) => 
+      Success((), new StatefulReader[State, Elem](f(in.state), in.wrapped)))
+  }
   def setState(newState: State): Parser[Unit] = {
-    StatefulParser[Unit]((in: StatefulReader[State, Elem]) => Success((), in.setState(newState)))
+    StatefulParser[Unit]((in: StatefulReader[State, Elem]) => 
+      Success((), in.setState(newState)))
   }
   def getInput: Parser[Reader[Elem]] = {
-    StatefulParser[Reader[Elem]]((in: StatefulReader[State, Elem]) => Success(in.wrapped, in))
+    StatefulParser[Reader[Elem]]((in: StatefulReader[State, Elem]) => 
+      Success(in.wrapped, in))
   }
   def setInput(newInput: Reader[Elem]) = {
-    StatefulParser[Unit]((in: StatefulReader[State, Elem]) => Success((), new StatefulReader(in.state, newInput)))
+    StatefulParser[Unit]((in: StatefulReader[State, Elem]) => 
+      Success((), new StatefulReader(in.state, newInput)))
+  }
+  def getPosition: Parser[Position] = {
+    StatefulParser[Position]((in: StatefulReader[State, Elem]) =>
+      Success(in.pos, in))
   }
 }

@@ -1,88 +1,140 @@
 package pandoc.text.readers
 
-import pandoc.text._
+import scala.util.parsing.input.CharSequenceReader
 
-/*object Markdown {
-  def indentSpaces: Parser[List[Char], ParserState, Char] = {
-    
+import pandoc.text._
+import pandoc.text.Shared.normalizeSpaces
+import pandoc.text.Definition._
+
+object Markdown extends Parsing {
+  
+  def readMarkdown(state: ParserState, doc: String): Pandoc = {
+    parse(parseMarkdown, new StatefulReader(state, new CharSequenceReader(doc + "\n\n")))
   }
   
-  def nonindentSpaces(implicit state: ParserState): Parser[String] =  new Parser[String] {
-    def apply(in: Input): ParseResult[String] = {
-      parse("[ ]*".r, in) match {
-        case Success(spaces, next) => {
-          if (spaces.length < state.tabStop) {
-            Success(spaces, next) 
-          } else {
-            Failure("unexpected indented line", in)
-          }
-        }
+  def isBulletListMarker(c: Char): Boolean = "*+-".contains(c)
+  def isHruleChar(c: Char): Boolean = "*-_".contains(c)
+  val setextHChars = "=-"
+  def isBlank(c: Char): Boolean = " \t\n".contains(c)
+  
+  def indentSpaces: Parser[String] = {
+    for {
+      state <- getState
+      tabStop = state.tabStop
+      res <- (literal(" " * tabStop) | literal("\t")).named("indentation") 
+    } yield res
+  }
+  
+  def nonindentSpaces: Parser[String] = StatefulParser[String]{ 
+    (in: StatefulReader[ParserState, Elem]) => {
+      val tabStop = in.state.tabStop
+      ("""[ ]*""".r)(in) match {
+        case Success(sps, next) => if (sps.length < tabStop) Success(sps, next)
+                                   else Failure("unexpected indented line", in)
         case x => x
       }
     }
   }
   
-  def skipNonindentSpaces(implicit state: ParserState): Parser[String] = {
-    "[ ]{0, %d}".format(state.tabStop - 1).r ~> ""
+  def skipNonindentSpaces: Parser[Unit] = {
+    for {
+      state <- getState
+      res <- """[ ]{0, %d}""".format(state.tabStop - 1).r
+    } yield ()
   }
   
-  def blankLine(implicit state: ParserState): Parser[String] = """[ \t]*""".r ~> "\n"
+  // didn't translate atMostSpaces, but put in skipNonindentSpaces
   
-  def litChar(implicit state: ParserState): Parser[String] = {
-    def singleNewLine: Parser[String] = new Parser[String] {
-      def apply(in: Input): ParseResult[String] = {
-        parse("\n" <~ not(blankLine), in) match {
-          case Success(str, next) => Success(" ", next)
-          case x => x
-        }
-      }
-    }
-    escapedCharPrime | """[^\n]""".r | singleNewLine 
+  def litChar: Parser[Char] = {
+    escapedCharPrime | elem("non newline", (c: Char) => c != '\n') | (elem('\n') ~> not(blankLine) ^^^ ' ')
   }
   
-  def failUnlessBeginningOfLine(implicit state: ParserState): Parser[String] = new Parser[String] {
-    def apply(in: Input): ParseResult[String] = {
-      if (in.pos.column == 1) Success("", in)
+  def failUnlessBeginningOfLine: Parser[Unit] = {
+    StatefulParser[Unit]((in: StatefulReader[ParserState, Elem]) => {
+      if (in.pos.column == 1) Success((), in)
       else Failure("not beginning of line", in)
+    })
+  }
+  
+  def inlinesInBalancedBrackets(parser: Parser[Inline]): Parser[List[Inline]] = {
+    def inlinesInside: Parser[List[Inline]] = {
+      (guard(parser).^? { case Str("[") => () }) ~> 
+        (inlinesInBalancedBrackets(parser)) ^^ ((bal: List[Inline]) => List(Str("[")) ++ bal ++ List(Str("]")))
     }
-  }
-/*  
-  def inlinesInBalancedBrackets(inlineParser: Parser[Inline])(implicit state: ParserState): Parser[List[Inline]] = {
-	def recursiveParser: Parser[Inline] = {
-	  (guard("[") ~> inlinesInBalancedBrackets(inlineParser)) ^^ 
-	  		((bal: List[Inline]) => List[Inline](Str("[")) ++ bal ++ List[Inline](Str("]"))) |
-	  inlineParser
-	}
-    "[" ~> (recursiveParser.*) <~ "]"
+    for {
+      _ <- elem('[')
+      result <- (inlinesInside | (parser ^^ ((inline: Inline) => List(inline)))).* <~ elem(']')
+    } yield result.flatten
   }
   
-  def titleLine(implicit state: ParserState): Parser[List[Inline]] = {
-    """%[ \t]*""".r ~ 
+  def titleLine: Parser[List[Inline]] = {
+    for {
+      _ <- elem('%')
+      _ <- skipSpaces
+      res <- ((not(elem('\n')) ~> inline) | (endline ~> whitespace)).* <~ elem('\n')
+    } yield normalizeSpaces(res)
   }
   
-  def endline(implicit state: ParserState): Parser[Inline] = {
-    def conds: Parser[Inline] = {
-      if (state.strict not(emailBlockQuoteStart) ~ not("#")
-      val list = not(bulletListStart) ~ not(anyOrderedListStart)
-      
-    }
-    "\n" <~ not(blankLine) <~ conds
-  }
-*/  
-  
-  def escapedCharPrime(implicit state: ParserState): Parser[String] = {
-    if (state.strict) """\\[\\`*_{}\[\]()>#+-.!~]""".r
-    else """\\[^a-zA-Z0-9]""".r 
+  def authorsLine: Parser[List[List[Inline]]] = {
+    for {
+      _ <- elem('%') ~ skipSpaces
+      authors <- sependby( not(elem(';') | elem('\n')) ~> inline, 
+                           elem(';') | (elem('\n') ~> not(blankLine) ~> spaceChar)) <~ elem('\n')
+    } yield authors.map(normalizeSpaces(_)).filter(!_.isEmpty)
   }
   
-  def escapedChar(implicit state: ParserState): Parser[Inline] = {
-    def strToInline(str: String): Inline = {
-      str match {
-        case " " => Str("\u00A0")
-        case "\n" => LineBreak
-        case x => Str(x)
+  def dateLine: Parser[List[Inline]] = {
+    for {
+      _ <- elem('%') ~ skipSpaces
+      date <- inline.* <~ elem('\n')
+    } yield normalizeSpaces(date)
+  }
+  
+  def titleBlock: Parser[(List[Inline], List[List[Inline]], List[Inline])] = {
+    for {
+      _ <- failIfStrict
+      title <- titleLine | success(Nil)
+      author <- authorsLine | success(Nil)
+      date <- dateLine | success(Nil)
+      _ <- blankLines.?
+    } yield (title, author, date)
+  }
+  
+  def parseMarkdown: Parser[Pandoc] = {
+    for {
+      _ <- updateState((s: ParserState) => s.copy(context = s.context.copy(raw = true)))
+      startPos <- getPosition
+      st <- getState
+      firstPassParser = referenceKey | (if (st.strict) pzero else noteBlock) | lineClump
+      docMinusKeys <- (firstPassParser.* <~ eof) ^^ // TODO: concat
+      _ <- setInput(docMinusKeys)
+      _ <- setPosition(startPos)
+      stPrime <- getState
+      reversedNotes = stPrime.notes
+    } yield { if (examples.isEmpty) doc else bottomUp(handleExampleRef)(doc)
+  }
+    
+  def inline: Parser[Inline] = whitespace
+  
+  def escapedCharPrime: Parser[Char] = {
+    for {
+      _ <- elem('\\')
+      state <- getState
+      escParser = if (state.strict) {
+        elem("non alpha-numeric", (c: Char) => "\\`*_{}[]()>#+-.!~".contains(c))
+      } else {
+        elem("non alpha-numeric", (c: Char) => !isAlphaNumChar(c))
       }
-    }
-    escapedCharPrime ^^ strToInline
+      ch <- escParser
+    } yield ch
   }
-}*/
+  
+  def escapedChar: Parser[Inline] = {
+    escapedCharPrime ^^ {
+      case ' ' => Str("\u00A0")
+      case '\n' => LineBreak
+      case x => Str(x.toString)
+    }
+  }
+
+}
