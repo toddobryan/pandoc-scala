@@ -1,4 +1,4 @@
-package pandoc.text.highlighting.kate
+package text.highlighting.kate
 
 import java.awt.Color
 

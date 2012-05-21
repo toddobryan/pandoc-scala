@@ -1,4 +1,6 @@
-package pandoc.text
+package text.pandoc
+
+import shapeless._
 
 object Definition {
   case class Pandoc(meta: Meta, content: List[Block])
@@ -42,7 +44,7 @@ object Definition {
   case class Plain(content: List[Inline]) extends Block
   case class Para(content: List[Inline]) extends Block
   case class CodeBlock(attr: Attr, str: String) extends Block
-  case class RawBlock(format: String, str: String) extends Block
+  case class RawBlock(format: Format, str: String) extends Block
   case class BlockQuote(content: List[Block]) extends Block
   case class OrderedList(attrs: ListAttributes, items: List[List[Block]]) extends Block
   case class BulletList(items: List[List[Block]]) extends Block
@@ -81,7 +83,7 @@ object Definition {
   case class RawInline(format: Format, str: String) extends Inline
   case class Link(linkStr: List[Inline], target: Target) extends Inline
   case class Image(altStr: List[Inline], target: Target) extends Inline
-  case class Note(content: List[Block])
+  case class Note(content: List[Block]) extends Inline
   
   case class Citation(id: String, prefix: List[Inline], suffix: List[Inline], 
                       mode: CitationMode, noteNum: Int, hash: Int)

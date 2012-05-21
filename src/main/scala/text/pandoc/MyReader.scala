@@ -1,11 +1,11 @@
-package pandoc.util
+package text.pandoc
 
 import scala.collection.mutable
 import scala.util.parsing.combinator.RegexParsers
 
-import pandoc.text.Definition._
+import Definition._
 
-object Reader extends RegexParsers {
+object MyReader extends RegexParsers {
   val normalChar = regex("""[^"\\]"""r)
   val backslashEscape = regex("""\\[abfnrtv"&'\\]"""r)
   val controlCode = regex("""\\(NUL|SOH|STX|ETX|EOT|ENQ|ACK|BEL|BS|HT|LF|VT|FF|CR|SO|SI|DLE|DC1|DC2|DC3|DC4|NAK|SYN|ETB|CAN|EM|SUB|ESC|FS|GS|RS|US|SP|DEL)"""r)
@@ -129,7 +129,7 @@ object Reader extends RegexParsers {
         case attr ~ str => CodeBlock(attr, str)
       })
     parsers += manifest[RawBlock] -> (() => (regex("""RawBlock\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
-        case Format(format) ~ str => RawBlock(format, str)
+        case Format(format) ~ str => RawBlock(Format(format), str)
       })
     parsers += manifest[BlockQuote] -> (() => (regex("""BlockQuote\s+"""r) ~> getParser[List[Block]]).map(BlockQuote(_)))
     parsers += manifest[OrderedList] -> (() => (regex("""OrderedList\s+"""r) ~> getParser[ListAttributes] ~ getParser[List[List[Block]]]).map {

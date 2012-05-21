@@ -1,11 +1,11 @@
-package pandoc.text.writers
+package text.pandoc.writers
 
 import java.io.PrintStream
-import pandoc.text.Writer
-import pandoc.text.Definition._
+import text.pandoc.Writer
+import text.pandoc.Definition._
 import pandoc.text._
-import pandoc.text.pretty.{cat, char, cr, nest, render, space, text, Doc}
-import pandoc.text.Shared.WriterOptions
+import text.pandoc.Shared.WriterOptions
+import text.pandoc.Pretty.{cat, char, cr, nest, render, space, text, Doc}
 
 object Native {
   def writeNative(opts: WriterOptions, doc: Pandoc): String = {
@@ -116,8 +116,7 @@ object Native {
       case RawInline(format, str) => "RawInline %s %s".format(show(format), show(str))
       case Link(linkStr, target) => "Link %s %s".format(show(linkStr), show(target))
       case Image(altStr, target) => "Image %s %s".format(show(altStr), show(target))
-      case Note(content) => "Note %s".format(show(content))
-      
+      case Note(content) => "Note %s".format(show(content))      
     }
   }
 }

@@ -1,6 +1,6 @@
-package pandoc.text
+package text.pandoc
 
-package object pretty {
+object Pretty {
   case class RenderState(
       output: List[String] = Nil, // in reverse order
       prefix: String = "",

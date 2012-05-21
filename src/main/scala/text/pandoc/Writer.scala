@@ -1,4 +1,4 @@
-package pandoc.text
+package text.pandoc
 
 import java.io.PrintStream
 

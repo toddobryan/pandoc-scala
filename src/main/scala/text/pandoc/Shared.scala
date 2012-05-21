@@ -1,4 +1,4 @@
-package pandoc.text
+package text.pandoc
 
 import java.io.File
 import java.text.SimpleDateFormat
@@ -6,13 +6,10 @@ import java.util.Date
 import java.text.ParseException
 import scalaz.State
 import scalaz.Scalaz._
-import shapeless.Poly._
-import pandoc.text.highlighting.kate.Types.{Style, Pygments}
-import pandoc.text.Generic.bottomUp
+import text.highlighting.kate.Types.{Style, Pygments}
+import Generic.{bottomUp, topDown, queryWith}
 import Pretty.charWidth
 import Definition._
-import shapeless.Poly1
-import shapeless.SybClass._
 
 object Shared {
   def splitBy[A](pred: (A) => Boolean, lst: List[A]): List[List[A]] = {
@@ -234,10 +231,22 @@ object Shared {
   }
   
   def normalize(doc: Pandoc): Pandoc = {
-    doc // TODO: bottomUp and topDown
-    // topDown removeEmptyBlocks .
-    // topDown consolidateInlines .
-    // bottomUp (removeEmptyInlines . removeTrailingInlineSpaces)
+    def remTrSpThenRemEmpIn(x: Any): Any = x match {
+      case l: List[_] if (l.forall(_.isInstanceOf[Inline])) => 
+          removeEmptyInlines(removeTrailingInlineSpaces(x.asInstanceOf[List[Inline]]))
+      case _ => x
+    }
+    def consInlines(x: Any): Any = x match {
+      case l: List[_] if (l.forall(_.isInstanceOf[Inline])) =>
+          consolidateInlines(x.asInstanceOf[List[Inline]])
+      case _ => x
+    }
+    def remEmpBls(x: Any): Any = x match {
+      case l: List[_] if (l.forall(_.isInstanceOf[Block])) =>
+          removeEmptyBlocks(x.asInstanceOf[List[Block]])
+      case _ => x
+    }
+    topDown(remEmpBls, topDown(consInlines, bottomUp(remTrSpThenRemEmpIn, doc)))
   }
   
   def removeEmptyBlocks(in: List[Block]): List[Block] = in match {
@@ -304,18 +313,16 @@ object Shared {
     case Nil => Nil
   }
   
-  def stringify(inlines: List[Inline]): String = { // TODO: need queryWith
-    def go(in: Inline): String = {
-      in match {
-        case Space => " "
-        case Str(x) => x
-        case Code(_, x) => x
-        case Math(_, x) => x
-        case LineBreak => " "
-        case _ => ""
-      }
+  def stringify(inlines: List[Inline]): String = {
+    def go: PartialFunction[Any, Any] = {
+      case Space => " "
+      case Str(x) => x
+      case Code(_, x) => x
+      case Math(_, x) => x
+      case LineBreak => " "
+      case x: Inline => ""
     }
-    inlines.map(go(_)).mkString
+    queryWith(go, inlines).mkString
   }
   
   def compactify(items: List[List[Block]]): List[List[Block]] = {
@@ -396,14 +403,13 @@ object Shared {
   
   def isHeaderBlock(block: Block): Boolean = block.isInstanceOf[Header]
   
-  /*def headerShift[T](n: Int): (T) => T = {
-    import shapeless.SybClass.EverywhereAux._
-    object shift extends Poly1 {
-      implicit def caseHeader = at[Header]((h: Header) => Header(h.level + n, h.content))
-      implicit def default[T] = at[T](t => t)
+  def headerShift[T](n: Int, doc: Pandoc): Pandoc = {
+    def shift: (Any) => Any = {
+      case Header(l, c) => Header(l + n, c)
+      case x => x
     }
-    everywhere(shift)
-  }*/
+    bottomUp(shift, doc)
+  }
   
   sealed abstract class HtmlMathMethod
   case object PlainMath extends HtmlMathMethod

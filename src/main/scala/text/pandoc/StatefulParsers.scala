@@ -1,4 +1,4 @@
-package pandoc.text
+package text.pandoc
 
 import scala.util.parsing.combinator.RegexParsers
 import scala.util.parsing.input.Reader
@@ -43,8 +43,22 @@ trait StatefulParsers[State] extends RegexParsers {
     }
   }
   
+  def count[A](n: Int, p: Parser[A]): Parser[List[A]] = {
+    if (n <= 0) success(Nil)
+    else p ~ count(n - 1, p) ^^ {
+      case a ~ as => a :: as
+    }
+  }
+  
   def sependby[T](item: Parser[T], sep: Parser[_]): Parser[List[T]] = {
     repsep(item, sep) <~ sep.?
+  }
+  
+  def eof: Parser[Unit] = {
+    StatefulParser[Unit]((in: StatefulReader[State, Elem]) => {
+      if (in.atEnd) Success((), in)
+      else Failure("not at end", in)
+    })
   }
     
   def getState: Parser[State] = {

@@ -1,4 +1,4 @@
-package pandoc.text
+package text.pandoc
 
 import java.net.{URI, URISyntaxException, URLEncoder}
 
@@ -64,6 +64,10 @@ trait Parsing extends StatefulParsers[ParserState] {
   }
   
   def anyLine: Parser[String] = """[^\n]*\n""".r ^^ (_.dropRight(1))
+  def letter: Parser[Char] = elem("letter", (c: Char) => c.isLetter)
+  def digit: Parser[Char] = elem("digit", (c: Char) => c.isDigit)
+  def alphaNum: Parser[Char] = elem("alphaNum", (c: Char) => c.isLetterOrDigit)
+  def alphaNumStar: Parser[String] = listOfCharToString(alphaNum.*)
   def spaceChar: Parser[Char] = elem(' ') | elem('\t')
   def nonspaceChar: Parser[Char] = elem("non-space character", (c: Char) => !"\t\n \r".contains(c))
   def skipSpaces: Parser[Unit] = spaceChar.* ^^^ ()

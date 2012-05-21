@@ -1,9 +1,9 @@
-package pandoc.text
+package text.pandoc
 
 import scala.io.Source
 import org.scalatest.FunSuite
-import pandoc.util.Reader.{parsedPlusRest, read}
-import pandoc.text.writers.Native
+import text.pandoc.MyReader.{parsedPlusRest, read}
+import text.pandoc.writers.Native
 
 import Definition._
 import Shared.{WriterSwitchOptions, WriterOptions}
