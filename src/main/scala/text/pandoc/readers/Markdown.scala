@@ -5,7 +5,7 @@ import scala.math.max
 
 import pandoc.text._
 import pandoc.text.Shared.{compactify, normalizeSpaces, stripTrailingNewlines}
-import pandoc.text.Definition._
+import pandoc.text.definition._
 
 object Markdown extends Parsing {
   
@@ -185,7 +185,7 @@ object Markdown extends Parsing {
         List(header, codeBlockIndented, blockQuote, hrule, bulletList,
              orderedList, htmlBlock, para, plain, emptyBlock)
     val nonStrictParsers: List[Parser[Block]] =
-        List(codeBlockDelimited, macro, header, table, codeBlockIndented,
+        List(codeBlockDelimited, makro, header, table, codeBlockIndented,
              lhsCodeBlock, blockQuote, hrule, bulletList, orderedList,
              definitionList, rawTeXBlock, para, rawHtmlBlocks, plain, emptyBlock)
     for {
@@ -443,7 +443,7 @@ object Markdown extends Parsing {
     } yield ()
   }
   
-  def definitionListItem: Parser[(List[Inline], List[List[Block]])] = {
+  /*def definitionListItem: Parser[(List[Inline], List[List[Block]])] = {
     for {
       _ <- guard(anyLine ~ blankLine.? ~ defListMarker)
       term <- inline.* <~ "\n" <~ blankLine.?
@@ -453,7 +453,7 @@ object Markdown extends Parsing {
       contents <- //TODO: how do I mapM?
       _ <- updateState((st: ParserState) => st.copy(context=st.context.copy(list=oldContext)))
     } yield ((normalizeSpaces(term), contents))
-  }
+  }*/
   
   def defRawBlock: Parser[String] = {
     def indentedLine: Parser[String] = indentSpaces ~ anyLine ^^ {

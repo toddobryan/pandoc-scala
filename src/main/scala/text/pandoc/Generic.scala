@@ -1,7 +1,7 @@
 package text.pandoc
 
 
-import Definition._
+import definition._
 
 object Generic {
   def gmapT[T](f: (Any) => Any, t: T): T = {

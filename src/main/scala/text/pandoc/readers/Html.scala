@@ -3,15 +3,15 @@ package text.pandoc.readers
 import text.tagsoup._
 
 import text.pandoc.Parsing
-import text.pandoc.Definition._
+import text.pandoc.definition._
 import text.pandoc.Shared._
 import text.pandoc.Builder._
 
 object Html extends Parsing {
   override type Elem = Tag
   
-  def parseHeader(tags: List[Tag]): (Meta, List[Tag]) = {
-    val (tit, _) = tags.dropWhile((t: Tag) => t != TagOpen("title", Nil)).drop(1).break(_ != TagClose("title"))
+  def parseHeader(tags: Stream[Tag]): (Meta, Stream[Tag]) = {
+    val (tit, _) = tags.dropWhile((t: Tag) => t != TagOpen("title", Nil)).drop(1).span(_ == TagClose("title"))
     val tit1 = tit.filter(_.isInstanceOf[TagText]).map {
       case TagText(txt) => txt
     }.mkString

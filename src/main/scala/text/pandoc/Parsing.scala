@@ -6,7 +6,9 @@ import scala.math.max
 import scala.util.parsing.input.CharSequenceReader
 import scala.util.parsing.input.Reader
 
-import Definition._
+import Stream.Empty
+
+import definition._
 import Shared._
 
 case class SourcePos(sourceName: String, line: Int, column: Int)
@@ -224,7 +226,7 @@ trait Parsing extends StatefulParsers[ParserState] {
     }
   }
   
-  def withHorizDisplacement[A](parser: => Parser[A]): Parser[(A, Int)] = {
+  def withHorizDisplacement[A](parser: => Parser[A])(implicit man: Manifest[A]): Parser[(A, Int)] = {
     for {
       inp1: Reader[Elem] <- getInput
       result: A <- parser
@@ -321,7 +323,7 @@ trait Parsing extends StatefulParsers[ParserState] {
       numParser <- List(decimal, exampleNum, defaultNum, romanOne,
                         lowerAlpha, lowerRoman, upperAlpha, upperRoman)
     } yield delimParser(numParser)
-    choice(listAttribParsers.head, (listAttribParsers.tail): _*)
+    choice(listAttribParsers)
   }
   
   def inPeriod(num: Parser[(ListNumberStyle, Int)]): Parser[ListAttributes] = {
@@ -377,20 +379,20 @@ trait Parsing extends StatefulParsers[ParserState] {
     } yield Str(c.toString)
   }
   
-  def tableWith[Sep, End](headerParser: Parser[(List[TableCell], List[Alignment], List[Int])],
-                rowParser: (List[Int] => Parser[List[TableCell]]),
+  def tableWith[Sep, End](headerParser: Parser[(Stream[TableCell], Stream[Alignment], Stream[Int])],
+                rowParser: (Stream[Int] => Parser[Stream[TableCell]]),
                 lineParser: Parser[Sep],
                 footerParser: Parser[End],
-                captionParser: Parser[List[Inline]]): Parser[Block] = {
-    val optCaption = captionParser.? ^^ ((cp: Option[List[Inline]]) => cp match {
+                captionParser: Parser[Stream[Inline]]): Parser[Block] = {
+    val optCaption = captionParser.? ^^ ((cp: Option[Stream[Inline]]) => cp match {
       case Some(inlines) => inlines
-      case None => Nil
+      case None => Empty
     })
     for {
       captionPrime <- optCaption
       headsAlignsAndIndices <- headerParser
       (heads, aligns, indices) = headsAlignsAndIndices
-      linesPrime <- repsep(rowParser(indices), lineParser) <~ lineParser.?
+      linesPrime <- (repsep(rowParser(indices), lineParser) <~ lineParser.?) ^^ (_.toStream)
       _ <- footerParser
       caption <- if (captionPrime.isEmpty) optCaption else success(captionPrime)
       state <- getState
@@ -399,17 +401,17 @@ trait Parsing extends StatefulParsers[ParserState] {
     } yield Table(caption, aligns, widths, heads, linesPrime)
   }
   
-  def widthsFromIndices(numColumnsPrime: Int, indices: List[Int]): List[Double] = {
-    if (indices.isEmpty) Nil
+  def widthsFromIndices(numColumnsPrime: Int, indices: Stream[Int]): Stream[Double] = {
+    if (indices.isEmpty) Empty
     else {
       val numColumns = max(numColumnsPrime, if (indices.isEmpty) 0 else indices.last)
-      val lengthsPrime = indices.zip(0 :: indices).map {
+      val lengthsPrime = indices.zip(0 #:: indices).map {
         case (i1, i2) => i1 - i2
       }
       val lengths = (lengthsPrime.reverse match {
-        case Nil => Nil
-        case x :: Nil => List(x)
-        case x :: y :: zs => if (x < y && y - x <= 2) y :: y :: zs else x :: y :: zs
+        case Empty => Empty
+        case x #:: Empty => Stream(x)
+        case x #:: y #:: zs => if (x < y && y - x <= 2) y #:: y #:: zs else x #:: y #:: zs
       }).reverse
       val totLength = lengths.sum
       val quotient = max(totLength, numColumns) * 1.0
@@ -419,13 +421,13 @@ trait Parsing extends StatefulParsers[ParserState] {
   }
   
   def gridTableWith(block: Parser[Block],
-                    tableCaption: Parser[List[Inline]], 
+                    tableCaption: Parser[Stream[Inline]], 
                     isHeadless: Boolean): Parser[Block] = {
     tableWith(gridTableHeader(isHeadless, block), gridTableRow(block), gridTableSep('-'),
               gridTableFooter, tableCaption)
   }
   
-  def gridTableSplitLine(indices: List[Int], line: String): List[String] = {
+  def gridTableSplitLine(indices: Stream[Int], line: String): Stream[String] = {
     splitStringByIndices(indices.init, removeTrailingSpace(line)).tail.map(removeFinalBar(_))
   }
   
@@ -436,8 +438,8 @@ trait Parsing extends StatefulParsers[ParserState] {
     } yield (dashes.length, dashes.length + 1)
   }
   
-  def gridDashedLines(c: Char): Parser[List[(Int, Int)]] = {
-    elem('+') ~> gridPart(c).+ <~ blankLine
+  def gridDashedLines(c: Char): Parser[Stream[(Int, Int)]] = {
+    (elem('+') ~> gridPart(c).+ <~ blankLine) ^^ (_.toStream)
   }
   
   def removeFinalBar(s: String): String = {
@@ -448,13 +450,13 @@ trait Parsing extends StatefulParsers[ParserState] {
     gridDashedLines(c) ^^^ '\n'
   }
   
-  private def mapM[A, B](f: A => Parser[B], as: Seq[A]): Parser[List[B]] = {
+  private def mapM[A, B](f: A => Parser[B], as: Stream[A]): Parser[Stream[B]] = {
     as match {
-      case Nil => success(Nil)
-      case first :: rest => for {
+      case Empty => success(Empty)
+      case first #:: rest => for {
         b <- f(first)
         bs <- mapM(f, rest)
-      } yield b :: bs
+      } yield b #:: bs
     }
   }
   
@@ -464,23 +466,23 @@ trait Parsing extends StatefulParsers[ParserState] {
     } yield f(a)
   }
 
-  def gridTableHeader(isHeadless: Boolean, block: Parser[Block]): Parser[(List[TableCell], List[Alignment], List[Int])] = {
+  def gridTableHeader(isHeadless: Boolean, block: Parser[Block]): Parser[(Stream[TableCell], Stream[Alignment], Stream[Int])] = {
     for {
       _ <- blankLines.?
       dashes <- gridDashedLines('-')
-      rawContent <- if (isHeadless) success(()) ^^^ List.fill(1000)("")
-                    else (not(gridTableSep('=')) ~> elem('|') ~> ".+".r <~ elem('\n')).+
+      rawContent <- if (isHeadless) success(()) ^^^ Stream.fill(1000)("")
+                    else ((not(gridTableSep('=')) ~> elem('|') ~> ".+".r <~ elem('\n')).+) ^^ (_.toStream)
       _ <- if (isHeadless) success(()) else gridTableSep('=') ^^^ ()
       linesPrime = dashes.map(_._2)
       indices = linesPrime.scanLeft(0)((x: Int, y: Int) => x + y)
-      aligns = List.fill(linesPrime.length)(AlignDefault)
-      rawHeads = if (isHeadless) List.fill(dashes.length)("")
+      aligns = Stream.fill(linesPrime.length)(AlignDefault)
+      rawHeads = if (isHeadless) Stream.fill(dashes.length)("")
                  else rawContent.map(gridTableSplitLine(indices, _)).transpose.map(_.mkString(" "))
-      heads <- mapM((s: String) => parseFromString(block.*, s), rawHeads.map(removeLeadingTrailingSpace(_)))
+      heads <- mapM((s: String) => parseFromString(block.* ^^ (_.toStream), s), rawHeads.map(removeLeadingTrailingSpace(_)))
     } yield (heads.map(TableCell(_)), aligns, indices)
   }
   
-  def gridTableRawLine(indices: List[Int]): Parser[List[String]] = {
+  def gridTableRawLine(indices: Stream[Int]): Parser[Stream[String]] = {
     for {
       _ <- elem('|')
       line <- ".+".r <~ elem('\n')
@@ -488,22 +490,22 @@ trait Parsing extends StatefulParsers[ParserState] {
   }
 
   
-  def gridTableRow(block: Parser[Block])(indices: List[Int]): Parser[List[TableCell]] = {
+  def gridTableRow(block: Parser[Block])(indices: Stream[Int]): Parser[Stream[TableCell]] = {
     for {
-      colLines <- gridTableRawLine(indices).*
-      cols = colLines.transpose.map((strs: List[String]) => removeOneLeadingSpace(strs).mkString("\n") + "\n")
-      res <- mapM((str: String) => parseFromString(block.*, str) ^^ ((bs: List[Block]) => compactifyCell(bs)), cols)
+      colLines <- (gridTableRawLine(indices).*) ^^ (_.toStream)
+      cols = colLines.transpose.map((strs: Stream[String]) => removeOneLeadingSpace(strs).mkString("\n") + "\n")
+      res <- mapM((str: String) => parseFromString(block.*, str) ^^ ((bs: List[Block]) => compactifyCell(bs.toStream)), cols)
     } yield res.map(TableCell(_))
   }
   
-  def removeOneLeadingSpace(xs: List[String]): List[String] = {
+  def removeOneLeadingSpace(xs: Stream[String]): Stream[String] = {
     def startsWithSpace(s: String) = (s == "" || s.startsWith(" "))
     if (xs.forall(startsWithSpace(_))) xs.map(_.drop(1))
     else xs
   }
   
-  def compactifyCell(bs: List[Block]): List[Block] = {
-    compactify(List(bs)).head
+  def compactifyCell(bs: Stream[Block]): Stream[Block] = {
+    compactify(Stream(bs)).head
   }
   
   def gridTableFooter: Parser[String] = blankLines

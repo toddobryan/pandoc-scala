@@ -3,7 +3,7 @@ package text.pandoc
 import scala.collection.mutable
 import scala.util.parsing.combinator.RegexParsers
 
-import Definition._
+import definition._
 
 object MyReader extends RegexParsers {
   val normalChar = regex("""[^"\\]"""r)
@@ -26,9 +26,9 @@ object MyReader extends RegexParsers {
   override def skipWhitespace = false
   
   def getParser[T](implicit man: Manifest[T]): Parser[T] = {
-    if (man <:< manifest[List[_]]) {
+    if (man <:< manifest[Stream[_]]) {
       val itemType = man.typeArguments(0)
-      listParser(itemType).asInstanceOf[Parser[T]]
+      streamParser(itemType).asInstanceOf[Parser[T]]
     } else {
       parsers(man)().asInstanceOf[Parser[T]]
     }
@@ -44,9 +44,9 @@ object MyReader extends RegexParsers {
     (regex("""\s*"""r) ~> literal(s) <~ regex("""\s*"""r))
   }
   
-  def listParser[T](implicit man: Manifest[T]): Parser[List[T]] = {
+  def streamParser[T](implicit man: Manifest[T]): Parser[Stream[T]] = {
     val itemParser = getParser(man)
-    (openParser("[") ~> repsep(itemParser, comma) <~ closeParser("]"))
+    (openParser("[") ~> repsep(itemParser, comma) <~ closeParser("]")) ^^ (_.toStream)
   }
     
   def dupleParser[A, B](aParser: Parser[A], bParser: Parser[B])(implicit manA: Manifest[A], manB: Manifest[B]): Parser[(A, B)] = {
@@ -62,8 +62,8 @@ object MyReader extends RegexParsers {
     }
   }
   
-  def labelWithContent[T, U](label: String, resultType: Function1[List[T], U])(implicit man: Manifest[T]): (() => Parser[U]) = {
-    () => (regex("""%s\s+""".format(label).r) ~> listParser[T]).map(resultType.apply(_))
+  def labelWithContent[T, U](label: String, resultType: Function1[Stream[T], U])(implicit man: Manifest[T]): (() => Parser[U]) = {
+    () => (regex("""%s\s+""".format(label).r) ~> streamParser[T]).map(resultType.apply(_))
   }
     
   def read[T](input: String)(implicit man: Manifest[T]): ParseResult[T] = {
@@ -78,14 +78,14 @@ object MyReader extends RegexParsers {
   }
   
   def initializeParsers() {
-    parsers += manifest[Pandoc] -> (() => (regex("""Pandoc\s+"""r) ~> getParser[Meta] ~ getParser[List[Block]]).map {
+    parsers += manifest[Pandoc] -> (() => (regex("""Pandoc\s+"""r) ~> getParser[Meta] ~ getParser[Stream[Block]]).map {
       case meta ~ content => Pandoc(meta, content)
     })
 
     parsers += manifest[Meta] -> (() => 
-      ((regex("""\(\s*Meta\s+\{\s*docTitle\s*=\s*"""r) ~> getParser[List[Inline]] <~ regex("""\s*,\s*docAuthors\s*=\s*"""r)) ~ 
-          (getParser[List[List[Inline]]] <~ regex("""\s*,\s*docDate\s*=\s*"""r)) ~
-          (getParser[List[Inline]] <~ regex("""\s*\}\s*\)"""r))).map{
+      ((regex("""\(\s*Meta\s+\{\s*docTitle\s*=\s*"""r) ~> getParser[Stream[Inline]] <~ regex("""\s*,\s*docAuthors\s*=\s*"""r)) ~ 
+          (getParser[Stream[Stream[Inline]]] <~ regex("""\s*,\s*docDate\s*=\s*"""r)) ~
+          (getParser[Stream[Inline]] <~ regex("""\s*\}\s*\)"""r))).map{
       case title ~ authors ~ date => Meta(title, authors, date)  
     })
 
@@ -120,31 +120,31 @@ object MyReader extends RegexParsers {
     parsers += manifest[KeyValue] -> (() => dupleParser(getParser[String], getParser[String]).map{
       case (key, value) => KeyValue(key, value)
     })
-    parsers += manifest[Attr] -> (() => tripleParser(getParser[String], getParser[List[String]], getParser[List[KeyValue]]).map{
+    parsers += manifest[Attr] -> (() => tripleParser(getParser[String], getParser[Stream[String]], getParser[Stream[KeyValue]]).map{
       case (id, classes, attrs) => Attr(id, classes, attrs)
     })
-    parsers += manifest[Plain] -> (() => (regex("""Plain\s+"""r) ~> getParser[List[Inline]]).map(Plain(_)))
-    parsers += manifest[Para] -> (() => (regex("""Para\s+"""r) ~> getParser[List[Inline]]).map(Para(_)))
+    parsers += manifest[Plain] -> (() => (regex("""Plain\s+"""r) ~> getParser[Stream[Inline]]).map(Plain(_)))
+    parsers += manifest[Para] -> (() => (regex("""Para\s+"""r) ~> getParser[Stream[Inline]]).map(Para(_)))
     parsers += manifest[CodeBlock] -> (() => (regex("""CodeBlock\s+"""r) ~> getParser[Attr] ~  getParser[String]).map {
         case attr ~ str => CodeBlock(attr, str)
       })
     parsers += manifest[RawBlock] -> (() => (regex("""RawBlock\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
         case Format(format) ~ str => RawBlock(Format(format), str)
       })
-    parsers += manifest[BlockQuote] -> (() => (regex("""BlockQuote\s+"""r) ~> getParser[List[Block]]).map(BlockQuote(_)))
-    parsers += manifest[OrderedList] -> (() => (regex("""OrderedList\s+"""r) ~> getParser[ListAttributes] ~ getParser[List[List[Block]]]).map {
+    parsers += manifest[BlockQuote] -> (() => (regex("""BlockQuote\s+"""r) ~> getParser[Stream[Block]]).map(BlockQuote(_)))
+    parsers += manifest[OrderedList] -> (() => (regex("""OrderedList\s+"""r) ~> getParser[ListAttributes] ~ getParser[Stream[Stream[Block]]]).map {
         case attrs ~ items => OrderedList(attrs, items)
       })
-    parsers += manifest[BulletList] -> (() => (regex("""BulletList\s+"""r) ~> getParser[List[List[Block]]]).map(BulletList(_)))
-    parsers += manifest[DefnItem] -> (() => dupleParser(getParser[List[Inline]], getParser[List[List[Block]]]).map {
+    parsers += manifest[BulletList] -> (() => (regex("""BulletList\s+"""r) ~> getParser[Stream[Stream[Block]]]).map(BulletList(_)))
+    parsers += manifest[DefnItem] -> (() => dupleParser(getParser[Stream[Inline]], getParser[Stream[Stream[Block]]]).map {
       case (a, b) => DefnItem(a, b)
     })
-    parsers += manifest[DefinitionList] -> (() => (regex("""DefinitionList\s+"""r) ~> getParser[List[DefnItem]]).map(DefinitionList(_)))
-    parsers += manifest[Header] -> (() => (regex("""Header\s+"""r) ~> getParser[Int] ~ getParser[List[Inline]]).map{
+    parsers += manifest[DefinitionList] -> (() => (regex("""DefinitionList\s+"""r) ~> getParser[Stream[DefnItem]]).map(DefinitionList(_)))
+    parsers += manifest[Header] -> (() => (regex("""Header\s+"""r) ~> getParser[Int] ~ getParser[Stream[Inline]]).map{
         case level ~ content => Header(level, content)
       })
-    parsers += manifest[Table] -> (() => (regex("""Table\s+"""r) ~> getParser[List[Inline]] ~ getParser[List[Alignment]] ~ getParser[List[Double]] ~
-        getParser[List[TableCell]] ~ getParser[List[List[TableCell]]]).map {
+    parsers += manifest[Table] -> (() => (regex("""Table\s+"""r) ~> getParser[Stream[Inline]] ~ getParser[Stream[Alignment]] ~ getParser[Stream[Double]] ~
+        getParser[Stream[TableCell]] ~ getParser[Stream[Stream[TableCell]]]).map {
           case caption ~ alignments ~ widths ~ headers ~ rows => Table(caption, alignments, widths, headers, rows)
       })
     parsers +=  manifest[Block] -> (() =>
@@ -183,10 +183,10 @@ object MyReader extends RegexParsers {
     parsers += manifest[Superscript] -> labelWithContent[Inline, Superscript]("Superscript", Superscript(_))
     parsers += manifest[Subscript] -> labelWithContent[Inline, Subscript]("Subscript", Subscript(_))
     parsers += manifest[SmallCaps] -> labelWithContent[Inline, SmallCaps]("SmallCaps", SmallCaps(_))
-    parsers += manifest[Quoted] -> (() => (regex("""Quoted\s+"""r) ~> getParser[QuoteType] ~ getParser[List[Inline]]).map {
+    parsers += manifest[Quoted] -> (() => (regex("""Quoted\s+"""r) ~> getParser[QuoteType] ~ getParser[Stream[Inline]]).map {
         case kind ~ content => Quoted(kind, content)
       })
-    parsers += manifest[Cite] -> (() => (regex("""Cite\s+"""r) ~> getParser[List[Citation]] ~ getParser[List[Inline]]).map {
+    parsers += manifest[Cite] -> (() => (regex("""Cite\s+"""r) ~> getParser[Stream[Citation]] ~ getParser[Stream[Inline]]).map {
         case citations ~ content => Cite(citations, content)
       })
     parsers += manifest[Code] -> (() => (regex("""Code\s+"""r) ~> getParser[Attr] ~ getParser[String]).map {
@@ -198,13 +198,13 @@ object MyReader extends RegexParsers {
   	parsers += manifest[RawInline] -> (() => (regex("""RawInline\s+"""r) ~> getParser[Format] ~ getParser[String]).map {
   	    case format ~ str => RawInline(format, str)
   	  })
-  	parsers += manifest[Link] -> (() => (regex("""Link\s+"""r) ~> getParser[List[Inline]] ~ getParser[Target]).map {
+  	parsers += manifest[Link] -> (() => (regex("""Link\s+"""r) ~> getParser[Stream[Inline]] ~ getParser[Target]).map {
   	    case linkStr ~ target => Link(linkStr, target)
   	  })
-  	parsers += manifest[Image] -> (() => (regex("""Image\s+"""r) ~> getParser[List[Inline]] ~ getParser[Target]).map {
+  	parsers += manifest[Image] -> (() => (regex("""Image\s+"""r) ~> getParser[Stream[Inline]] ~ getParser[Target]).map {
   	    case altStr ~ target => Image(altStr, target)
   	  })
-  	parsers += manifest[Note] -> (() => (regex("""Note\s+"""r) ~> getParser[List[Block]]).map(Note(_)))
+  	parsers += manifest[Note] -> (() => (regex("""Note\s+"""r) ~> getParser[Stream[Block]]).map(Note(_)))
       
     parsers += manifest[Inline] -> (() => 
         getParser[Str] |
@@ -226,8 +226,8 @@ object MyReader extends RegexParsers {
         getParser[Note]
       )
         
-    parsers += manifest[Citation] -> (() => (regex("""Citation\s+"""r) ~> getParser[String] ~ getParser[List[Inline]] 
-          ~ getParser[List[Inline]] ~ getParser[CitationMode] ~ getParser[Int] ~ getParser[Int]).map {
+    parsers += manifest[Citation] -> (() => (regex("""Citation\s+"""r) ~> getParser[String] ~ getParser[Stream[Inline]] 
+          ~ getParser[Stream[Inline]] ~ getParser[CitationMode] ~ getParser[Int] ~ getParser[Int]).map {
             case id ~ prefix ~ suffix ~ mode ~ noteNum ~ hash => Citation(id, prefix, suffix, mode, noteNum, hash) 
         })
       
