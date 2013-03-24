@@ -5,7 +5,7 @@ name := "pandoc-scala"
 
 version := "0.1"
 
-scalaVersion := "2.10.0"
+scalaVersion := "2.10.1"
 
 resolvers ++= Seq(
   "Sonatype OSS Releases" at "http://oss.sonatype.org/content/repositories/releases/",

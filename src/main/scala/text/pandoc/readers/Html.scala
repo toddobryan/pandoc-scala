@@ -1,5 +1,7 @@
 package text.pandoc.readers
 
+import Stream.Empty
+
 import text.tagsoup._
 
 import text.pandoc.Parsing
@@ -7,7 +9,7 @@ import text.pandoc.definition._
 import text.pandoc.Shared._
 import text.pandoc.Builder._
 
-object Html extends Parsing {
+/*object Html extends Parsing {
   override type Elem = Tag
   
   def parseHeader(tags: Stream[Tag]): (Meta, Stream[Tag]) = {
@@ -17,23 +19,23 @@ object Html extends Parsing {
     }.mkString
     val tit2 = normalizeSpaces(text(tit1))
     val rest = tags.dropWhile((t: Tag) => !(t == TagClose("head") || t == TagOpen("body", Nil))).drop(1)
-    (Meta(title=tit2, authors=Nil, date=Nil), rest)
+    (Meta(title=tit2, authors=Empty, date=Empty), rest)
   }
   
-  def parseBody: Parser[List[Block]] = {
-    block.* <~ eof ^^ ((lBlks: List[List[Block]]) => lBlks.flatten.map(fixPlains(false, _)))
+  def parseBody: Parser[Stream[Block]] = {
+    (block.* <~ eof) ^^ (_.toStream.flatMap(fixPlains(false, _)))
   }
   
-  def block: Parser[List[Block]] = {
-    choice(List(pPara, pHeader, pBlockQuote, pCodeBlock, 
+  def block: Parser[Stream[Block]] = {
+    choice(Stream(pPara, pHeader, pBlockQuote, pCodeBlock, 
         pList, pHrule, pSimpleTable, pPlain, pRawHtmlBlock))
   }
   
-  def renderTags(tags: List[Tag]): String = {
+  def renderTags(tags: Stream[Tag]): String = {
     
   }
   
-  def fixPlains(inList: Boolean, blks: List[Block]): List[Block] = {
+  def fixPlains(inList: Boolean, blks: Stream[Block]): List[Block] = {
     def isParaish(b: Block): Boolean = {
       (b.isInstanceOf[Para] || b.isInstanceOf[CodeBlock] 
         || b.isInstanceOf[Header] || b.isInstanceOf[BlockQuote]) ||
@@ -48,4 +50,4 @@ object Html extends Parsing {
     else blks
   }
 
-}
+}*/

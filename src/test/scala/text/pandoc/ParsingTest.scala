@@ -1,31 +1,13 @@
-package pandoc.text
+package text.pandoc
 
-import Parsing.ParseResult
-import Parsing.Success
-import Parsing.anyLine
-import Parsing.blankLine
-import Parsing.blankLines
-import Parsing.domain
-import Parsing.emailAddress
-import Parsing.enclosed
-import Parsing.lineClump
-import Parsing.parse
-import Parsing.parseAll
-import Parsing.romanNumeral
-import Parsing.skipSpaces
-import Parsing.spaceChar
-import Parsing.stringAnyCase
 import org.scalatest.FunSuite
-import pandoc.text.Parsing.literal
-import pandoc.text.Parsing.regex
 
 
-class ParsingTest extends FunSuite {
-  import Parsing._
+class ParsingTest extends FunSuite with Parsing {
   
   def parsedPlusRest[T](res: ParseResult[T]): Option[(T, String)] = {
     res match {
-      case Success(value, rest) => Some(value, rest.source.subSequence(res.next.offset, rest.source.length).toString)
+      case Success(value, rest) => Some((value, rest.source.subSequence(res.next.offset, rest.source.length).toString))
       case _ => None
     }
   }

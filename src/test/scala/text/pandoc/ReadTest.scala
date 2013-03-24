@@ -1,10 +1,10 @@
-package pandoc.util
+package text.pandoc
 
 import org.scalatest.FunSuite
 
-import Reader.{read, parsedPlusRest}
+import MyReader.{read, parsedPlusRest}
 
-class ReadTest extends FunSuite {
+class ReadTest extends FunSuite with Parsing {  
   test("parse various things") {
     assert(parsedPlusRest(read[Int]("123")) === Some(123, ""))
     assert(parsedPlusRest(read[Double]("4.0 + a")) === Some(4.0, " + a"))

@@ -3,11 +3,11 @@ package pandoc.text.readers
 import scala.util.parsing.input.CharSequenceReader
 import scala.math.max
 
-import pandoc.text._
-import pandoc.text.Shared.{compactify, normalizeSpaces, stripTrailingNewlines}
-import pandoc.text.definition._
+import text.pandoc._
+import text.pandoc.Shared.{compactify, normalizeSpaces, stripTrailingNewlines}
+import text.pandoc.definition._
 
-object Markdown extends Parsing {
+/*object Markdown extends Parsing {
   
   /*def readMarkdown(state: ParserState, doc: String): Pandoc = {
     parse(parseMarkdown, new StatefulReader(state, new CharSequenceReader(doc + "\n\n")))
@@ -498,4 +498,4 @@ object Markdown extends Parsing {
       case x => Str(x.toString)
     }
   }
-}
+}*/

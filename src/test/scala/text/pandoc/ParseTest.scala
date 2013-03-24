@@ -5,13 +5,13 @@ import org.scalatest.FunSuite
 import text.pandoc.MyReader.{parsedPlusRest, read}
 import text.pandoc.writers.Native
 
-import Definition._
+import definition._
 import Shared.{WriterSwitchOptions, WriterOptions}
 
 class ParseTest extends FunSuite {
   test("parse native values") {
     assert(parsedPlusRest(read[List[Inline]]("""[Str "abc",Space,Emph [Str "emphasis"]]""")) === 
-      Some(List(Str("\"abc\""), Space, Emph(List(Str("\"emphasis\"")))), ""))
+      Some((Stream(Str("\"abc\""), Space, Emph(Stream(Str("\"emphasis\"")))), "")))
   }
   
   test("read native files") {

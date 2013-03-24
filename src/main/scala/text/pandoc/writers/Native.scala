@@ -1,8 +1,10 @@
 package text.pandoc.writers
 
+import Stream.Empty
+
 import java.io.PrintStream
 import text.pandoc.Writer
-import text.pandoc.Definition._
+import text.pandoc.definition._
 import pandoc.text._
 import text.pandoc.Shared.WriterOptions
 import text.pandoc.Pretty.{cat, char, cr, nest, render, space, text, Doc}
@@ -17,13 +19,13 @@ object Native {
     render(colWidth, withMaybeHead)
   }
   
-  def prettyList(docs: List[Doc]): Doc = {
+  def prettyList(docs: Stream[Doc]): Doc = {
     char('[') <> cat(intersperse(cr <> char(','), docs.map(nest(1, _)))) <> char(']')
   }
   
   def prettyBlock(block: Block): Doc = {
-    def prettifyBlockLists(blockLists: List[List[Block]]): Doc = {
-      prettyList(blockLists.map((blocks: List[Block]) => prettyList(blocks.map(prettyBlock(_)))))
+    def prettifyBlockLists(blockLists: Stream[Stream[Block]]): Doc = {
+      prettyList(blockLists.map((blocks: Stream[Block]) => prettyList(blocks.map(prettyBlock(_)))))
     }
     block match {
       case BlockQuote(blocks) => text("BlockQuote") %% prettyList(blocks.map(prettyBlock(_)))
@@ -43,30 +45,30 @@ object Native {
         text("Table ") <> text(show(caption)) <>
           text(" ") <> text(show(aligns)) <> text(" ") <> text(show(widths)) %%
           prettifyBlockLists(header.map(_.wrapped)) %%
-          prettyList(rows.map((cells: List[TableCell]) => prettifyBlockLists(cells.map(_.wrapped))))
+          prettyList(rows.map((cells: Stream[TableCell]) => prettifyBlockLists(cells.map(_.wrapped))))
       }
       case block => text(show(block))
     }
   }
   
   
-  def intersperse[T](elem: T, list: List[T]): List[T] = {
+  def intersperse[T](elem: T, list: Stream[T]): Stream[T] = {
     list match {
-      case Nil => Nil
-      case first :: Nil => list
-      case first :: rest => first :: elem :: intersperse(elem, rest)
+      case Empty => Empty
+      case first #:: Empty => list
+      case first #:: rest => first #:: elem #:: intersperse(elem, rest)
     }
   }
   
   def show[T](arg: T)(implicit man: Manifest[T]): String = {
-    if (man <:< manifest[List[_]]) {
+    if (man <:< manifest[Stream[_]]) {
       def itemType[U]: Manifest[U] = man.typeArguments(0).asInstanceOf[Manifest[U]]
-      arg.asInstanceOf[List[_]].map(show(_)(itemType)).mkString("[", ",", "]")      
+      arg.asInstanceOf[Stream[_]].map(show(_)(itemType)).mkString("[", ",", "]")      
     } else {
       arg match {
       	case meta: Meta => "Meta {docTitle = %s, docAuthors = %s, docDate = %s}".format(
-      	    show[List[Inline]](meta.title), show[List[List[Inline]]](meta.authors), 
-      	    show[List[Inline]](meta.date))
+      	    show[Stream[Inline]](meta.title), show[Stream[Stream[Inline]]](meta.authors), 
+      	    show[Stream[Inline]](meta.date))
       	case block: Block => showBlock[T](arg)
       	case inline: Inline => showInline[T](arg)
       	case Attr(id, classes, attrs) => "(%s,%s,%s)".format(show(id), show(classes), show(attrs))
@@ -120,23 +122,3 @@ object Native {
     }
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

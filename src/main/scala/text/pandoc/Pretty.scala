@@ -1,8 +1,10 @@
 package text.pandoc
 
+import Stream.Empty
+
 object Pretty {
   case class RenderState(
-      output: List[String] = Nil, // in reverse order
+      output: Stream[String] = Empty, // in reverse order
       prefix: String = "",
       usePrefix: Boolean = true,
       lineLength: Option[Int] = None,
@@ -15,7 +17,7 @@ object Pretty {
   case class Text(len: Int, content: String) extends D {
     override def isBlank: Boolean = content.length > 0 && content.charAt(0).isSpaceChar
   }
-  case class Block(width: Int, content: List[String]) extends D
+  case class Block(width: Int, content: Stream[String]) extends D
   case class Prefixed(prefix: String, doc: Doc) extends D
   case class BeforeNonBlank(doc: Doc) extends D
   case class Flush(doc: Doc) extends D
@@ -32,7 +34,7 @@ object Pretty {
     override def isBlank: Boolean = true
   }
   
-  case class Doc(content: List[D]) {
+  case class Doc(content: Stream[D]) {
     def isEmpty: Boolean = content.isEmpty
     def <>(that: Doc): Doc = Doc(this.content ++ that.content)
     def <+>(that: Doc): Doc = {
@@ -54,9 +56,9 @@ object Pretty {
       Doc(this.content.reverse.dropWhile(_.isBlank).reverse)
     }
   }
-  def empty = Doc(Nil)
+  def empty = Doc(Empty)
   
-  def cat(docs: List[Doc]): Doc = Doc(docs.flatMap(_.content))
+  def cat(docs: Stream[Doc]): Doc = Doc(docs.flatMap(_.content))
   def hcat = cat _
   def hsep(docs: List[Doc]): Doc = docs.foldRight[Doc](empty)((l: Doc, r: Doc) => l <+> r)
   def vcat(docs: List[Doc]): Doc = docs.foldRight[Doc](empty)((l: Doc, r: Doc) => l %% r)
@@ -66,10 +68,10 @@ object Pretty {
     if (offset <= 0) {
       val rawPref = state.prefix
       if (state.column == 0 && state.usePrefix && rawPref != "") {
-        val pref: List[Char] = rawPref.toCharArray.toList.reverse.dropWhile(_.isSpaceChar).reverse
-        state.copy(output = pref.mkString :: state.output, column = state.column + realLength(pref))
+        val pref: Stream[Char] = rawPref.toCharArray.toStream.reverse.dropWhile(_.isSpaceChar).reverse
+        state.copy(output = pref.mkString #:: state.output, column = state.column + realLength(pref))
       } else if (offset < 0) {
-        state.copy(output = s :: state.output, column = 0, newLines = state.newLines + 1)
+        state.copy(output = s #:: state.output, column = 0, newLines = state.newLines + 1)
       } else {
         state
       }
@@ -77,11 +79,11 @@ object Pretty {
       val pref = state.prefix
       val statePrime: RenderState = 
         if (state.column == 0 && state.usePrefix && pref != "") {
-    	  state.copy(output = pref :: state.output, column = state.column + realLength(pref.toCharArray.toList))
+    	  state.copy(output = pref #:: state.output, column = state.column + realLength(pref.toCharArray.toStream))
         } else {
           state
         }
-      statePrime.copy(output = s :: statePrime.output, column = statePrime.column + offset, newLines = 0)
+      statePrime.copy(output = s #:: statePrime.output, column = statePrime.column + offset, newLines = 0)
     }
   }
   
@@ -93,37 +95,37 @@ object Pretty {
     renderList(doc.content, state)
   }
   
-  def renderList(elts: List[D], state: RenderState): RenderState = {
+  def renderList(elts: Stream[D], state: RenderState): RenderState = {
     elts match {
-      case Nil => state
-      case Text(offset, s) :: xs => renderList(xs, outp(offset, s, state))
-      case Prefixed(pref, doc) :: xs => {
+      case Empty => state
+      case Text(offset, s) #:: xs => renderList(xs, outp(offset, s, state))
+      case Prefixed(pref, doc) #:: xs => {
         renderList(xs, renderDoc(doc, state.copy(prefix = state.prefix + pref)).
             copy(prefix = state.prefix))
       }
-      case Flush(doc) :: xs => {
+      case Flush(doc) #:: xs => {
         renderList(xs, renderDoc(doc, state.copy(usePrefix = false)).copy(usePrefix = state.usePrefix))
       }
-      case BeforeNonBlank(doc) :: x0 :: xs if (x0.isBlank) => renderList(x0 :: xs, state)
-      case BeforeNonBlank(doc) :: Nil => renderList(Nil, state)
-      case BeforeNonBlank(doc) :: xs => renderList(xs, renderDoc(doc, state))
-      case BlankLine :: xs => {
+      case BeforeNonBlank(doc) #:: x0 #:: xs if (x0.isBlank) => renderList(x0 #:: xs, state)
+      case BeforeNonBlank(doc) #:: Empty => renderList(Empty, state)
+      case BeforeNonBlank(doc) #:: xs => renderList(xs, renderDoc(doc, state))
+      case BlankLine #:: xs => {
         val modState = 
           if (state.newLines > 1 || xs == Nil) state
           else if (state.column == 0) outp(-1, "\n", state)
           else outp(-1, "\n", outp(-1, "\n", state))
         renderList(xs, modState)
       }
-      case CarriageReturn :: xs => {
+      case CarriageReturn #:: xs => {
         if (state.newLines > 0 || xs == Nil) renderList(xs, state)
         else renderList(xs, outp(-1, "\n", state))
       }
-      case NewLine :: xs => renderList(xs, outp(-1, "\n", state))
-      case BreakingSpace :: CarriageReturn :: xs => renderList(CarriageReturn :: xs, state)
-      case BreakingSpace :: NewLine :: xs => renderList(NewLine :: xs, state)
-      case BreakingSpace :: BlankLine :: xs => renderList(BlankLine :: xs, state)
-      case BreakingSpace :: BreakingSpace :: xs => renderList(BreakingSpace :: xs, state)
-      case BreakingSpace :: xs => {
+      case NewLine #:: xs => renderList(xs, outp(-1, "\n", state))
+      case BreakingSpace #:: CarriageReturn #:: xs => renderList(CarriageReturn #:: xs, state)
+      case BreakingSpace #:: NewLine #:: xs => renderList(NewLine #:: xs, state)
+      case BreakingSpace #:: BlankLine #:: xs => renderList(BlankLine #:: xs, state)
+      case BreakingSpace #:: BreakingSpace #:: xs => renderList(BreakingSpace #:: xs, state)
+      case BreakingSpace #:: xs => {
         val xsPrime = xs.dropWhile(_ == BreakingSpace)
         val next = xsPrime.takeWhile((d: D) => d.isInstanceOf[Text] || d.isInstanceOf[Block])
         val offset = next.map(offsetOf(_)).sum
@@ -133,13 +135,13 @@ object Pretty {
           case _ => renderList(xsPrime, outp(1, " ", state))
         }
       }
-      case (b1: Block) :: (b2: Block) :: xs => 
-        renderList(mergeBlocks(false, b1, b2) :: xs, state)
-      case (b1: Block) :: BreakingSpace :: (b2: Block) :: xs => {
-        renderList(mergeBlocks(true, b1, b2) :: xs, state)
+      case (b1: Block) #:: (b2: Block) #:: xs => 
+        renderList(mergeBlocks(false, b1, b2) #:: xs, state)
+      case (b1: Block) #:: BreakingSpace #:: (b2: Block) #:: xs => {
+        renderList(mergeBlocks(true, b1, b2) #:: xs, state)
       }
-      case Block(width, lns) :: xs => {
-        val indent = state.column - realLength(state.prefix.toCharArray.toList)
+      case Block(width, lns) #:: xs => {
+        val indent = state.column - realLength(state.prefix.toCharArray.toStream)
         val modState = 
           if (indent > 0) state.copy(prefix = state.prefix + (" " * indent))
           else state
@@ -153,7 +155,7 @@ object Pretty {
       case (Block(w1, lns1), Block(w2, lns2)) => {
         val width = w1 + w2 + (if (addSpace) 1 else 0)
         val empties = List.fill(math.abs(lns1.length - lns2.length))("")
-        def pad(n: Int, s: String): String = s + (" " * (n - realLength(s.toCharArray.toList)))
+        def pad(n: Int, s: String): String = s + (" " * (n - realLength(s.toCharArray.toStream)))
         def sp(s: String): String = {
           if (s != "" && addSpace) " " + s
           else s
@@ -166,7 +168,7 @@ object Pretty {
     }
   }
   
-  def blockToDoc(width: Int, lns: List[String]): Doc = text(lns.mkString("\n"))
+  def blockToDoc(width: Int, lns: Stream[String]): Doc = text(lns.mkString("\n"))
 
   def offsetOf(d: D): Int = {
     d match {
@@ -177,28 +179,28 @@ object Pretty {
     }
   }
   
-  def toChunks(s: List[Char]): List[D] = {
+  def toChunks(s: Stream[Char]): Stream[D] = {
     s match {
-      case Nil => Nil
+      case Empty => Empty
       case x => x.span(_ != '\n') match {
-        case (Nil, _ :: ys) => NewLine +: toChunks(ys)
-        case (xs, _ :: ys) => Text(realLength(xs), xs.mkString) +: NewLine +: toChunks(ys)
-        case (xs, Nil) => List(Text(realLength(xs), xs.mkString))
+        case (Empty, _ #:: ys) => NewLine +: toChunks(ys)
+        case (xs, _ #:: ys) => Text(realLength(xs), xs.mkString) +: NewLine +: toChunks(ys)
+        case (xs, Empty) => Stream(Text(realLength(xs), xs.mkString))
       }
     }
   }
   def text(s: String): Doc = {
-    Doc(toChunks(s.toCharArray.toList))
+    Doc(toChunks(s.toCharArray.toStream))
   }
   def char(c: Char): Doc = text(c.toString)
-  def space: Doc = Doc(List(BreakingSpace))
-  def cr: Doc = Doc(List(CarriageReturn))
-  def blankline: Doc = Doc(List(BlankLine))
-  def prefixed(prefix: String, doc: Doc): Doc = Doc(List(Prefixed(prefix, doc)))
-  def flush(doc: Doc): Doc = Doc(List(Flush(doc)))
+  def space: Doc = Doc(Stream(BreakingSpace))
+  def cr: Doc = Doc(Stream(CarriageReturn))
+  def blankline: Doc = Doc(Stream(BlankLine))
+  def prefixed(prefix: String, doc: Doc): Doc = Doc(Stream(Prefixed(prefix, doc)))
+  def flush(doc: Doc): Doc = Doc(Stream(Flush(doc)))
   def nest(indent: Int, doc: Doc): Doc = prefixed(" " * indent, doc)
   def hang(indent: Int, start: Doc, doc: Doc): Doc = start <> nest(indent, doc)
-  def beforeNonBlank(doc: Doc): Doc = Doc(List(BeforeNonBlank(doc)))
+  def beforeNonBlank(doc: Doc): Doc = Doc(Stream(BeforeNonBlank(doc)))
   def noWrap(doc: Doc): Doc = {
     val unwrapped = doc.content map {(d: D) =>
       d match {
@@ -209,27 +211,27 @@ object Pretty {
     Doc(unwrapped)
   }
   def offset(doc: Doc): Int = render(None, doc).split('\n').toList.
-	  map((s: String) => realLength(s.toCharArray.toList)).foldLeft(0)((l: Int, r: Int) => math.max(l, r))
+	  map((s: String) => realLength(s.toCharArray.toStream)).foldLeft(0)((l: Int, r: Int) => math.max(l, r))
   def block(filler: (String => String), width: Int)(doc: Doc): Doc = {
-    Doc(List(Block(width, chop(width, render(Some(width), doc)).map(filler(_)))))
+    Doc(Stream(Block(width, chop(width, render(Some(width), doc)).map(filler(_)))))
   }
   def lblock(width: Int, doc: Doc): Doc = block((s: String) => s, width)(doc)
   def rblock(width: Int, doc: Doc): Doc = {
-    block((s: String) => (" " * (width - realLength(s.toCharArray.toList))) + s, width)(doc)
+    block((s: String) => (" " * (width - realLength(s.toCharArray.toStream))) + s, width)(doc)
   }
   def cblock(width: Int, doc: Doc): Doc = {
-    block((s: String) => (" " * ((width - realLength(s.toCharArray.toList)) / 2)) + s, width)(doc)
+    block((s: String) => (" " * ((width - realLength(s.toCharArray.toStream)) / 2)) + s, width)(doc)
   }
   def height(doc: Doc): Int = render(None, doc).split('\n').length
-  def chop(width: Int, s: String): List[String] = {
-    if (s == "") Nil
-    else s.toCharArray.toList.span(_ != '\n') match {
+  def chop(width: Int, s: String): Stream[String] = {
+    if (s == "") Empty
+    else s.toCharArray.toStream.span(_ != '\n') match {
       case (xs, ys) if (realLength(xs) <= width) => ys match {
-        case Nil => List(xs.mkString)
-        case _ :: Nil => List(xs.mkString, "")
-        case _ :: zs => xs.mkString :: chop(width, zs.mkString)
+        case Empty => Stream(xs.mkString)
+        case _ #:: Empty => Stream(xs.mkString, "")
+        case _ #:: zs => xs.mkString #:: chop(width, zs.mkString)
       }
-      case (xs, ys) => xs.take(width).mkString :: chop(width, (xs ++ ys).drop(width).mkString)
+      case (xs, ys) => xs.take(width).mkString #:: chop(width, (xs ++ ys).drop(width).mkString)
     }
   }
     
@@ -280,7 +282,7 @@ object Pretty {
     else 1
   }
   
-  def realLength(s: List[Char]): Int = {
+  def realLength(s: Stream[Char]): Int = {
     s.map(charWidth _).foldLeft[Int](0)((l: Int, r: Int) => l + r)
   }
 }
