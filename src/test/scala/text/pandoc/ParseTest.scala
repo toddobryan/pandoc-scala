@@ -10,7 +10,7 @@ import Shared.{WriterSwitchOptions, WriterOptions}
 
 class ParseTest extends FunSuite {
   test("parse native values") {
-    assert(parsedPlusRest(read[List[Inline]]("""[Str "abc",Space,Emph [Str "emphasis"]]""")) === 
+    assert(parsedPlusRest(read[Stream[Inline]]("""[Str "abc",Space,Emph [Str "emphasis"]]""")) === 
       Some((Stream(Str("\"abc\""), Space, Emph(Stream(Str("\"emphasis\"")))), "")))
   }
   
