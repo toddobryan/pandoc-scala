@@ -1,6 +1,6 @@
 package text.pandoc
 
-import definition._
+import text.pandoc.definition._
 
 import Stream.Empty
 

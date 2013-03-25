@@ -1,8 +1,11 @@
 package text.pandoc
 
+import scala.language.implicitConversions
+
 import java.net.{URI, URISyntaxException, URLEncoder}
 
 import scala.math.max
+import scala.reflect.runtime.universe.TypeTag
 import scala.util.parsing.input.CharSequenceReader
 import scala.util.parsing.input.Reader
 
@@ -228,9 +231,9 @@ trait Parsing extends StatefulParsers[ParserState] {
   
   def withHorizDisplacement[A](parser: => Parser[A])(implicit man: Manifest[A]): Parser[(A, Int)] = {
     for {
-      inp1: Reader[Elem] <- getInput
-      result: A <- parser
-      inp2: Reader[Elem] <- getInput
+      inp1 <- getInput
+      result <- parser
+      inp2 <- getInput
     } yield (result, inp2.pos.column - inp1.pos.column)
   }
   
@@ -509,8 +512,6 @@ trait Parsing extends StatefulParsers[ParserState] {
   }
   
   def gridTableFooter: Parser[String] = blankLines
-  
-  
   
   val entityMap: Map[String, Char] = Map(
     "quot" -> '"', //  = quotation mark (= APL quote)
