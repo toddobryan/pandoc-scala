@@ -1,4 +1,4 @@
-package pandoc.text.writers
+package text.pandoc.writers
 
 import Stream.Empty
 import scala.xml.{Node, NodeSeq, Text}
@@ -9,7 +9,7 @@ import scalaz._
 import Scalaz._
 
 
-class HtmlWriter {
+object HtmlWriter {
   case class WriterState(
       notes: Stream[Node] = Empty,
       usesMath: Boolean = false,
@@ -36,17 +36,18 @@ class HtmlWriter {
     }
   }*/
       
-  /*def inlineListToHtml(opts: WriterOptions, lst: Stream[Inline]): State[WriterState, NodeSeq] = {
-    mapM(inlineToHtml(opts)) 
+  def inlineListToHtml(opts: WriterOptions)(lst: Stream[Inline]): State[WriterState, NodeSeq] = lst match {
+    case Empty => state(s => (s, NodeSeq.Empty))
+    case h #:: t => (inlineListToHtml(opts)(t)
     
-  }*/
+  }
       
-  def inlineToHtml(opts: WriterOptions)(inline: Inline): State[WriterState, Node] = {
+  def inlineToHtml(opts: WriterOptions)(inline: Inline): State[WriterState, NodeSeq] = {
     inline match {
       case Str(str) => state((_, Text(str)))
       case Space => state((_, Text(" ")))
-      //case LineBreak => state((_, <br/>))
-      //case Emph(lst) => state((_, <em>{ inlineListToHtml(opts, lst) }</em>))
+      case LineBreak => state((_, <br/>))
+      case Emph(lst) => state((_, <em>{ inlineListToHtml(opts, lst) }</em>))
       //case Strong(lst) => state((_, <strong>{ inlineListToHtml(opts, lst) }</strong>))
       
     }
