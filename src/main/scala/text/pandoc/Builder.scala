@@ -108,8 +108,8 @@ object Builder {
     Stream(DefinitionList(items))
   }
   
-  def header(level: Int, ins: Stream[Inline]): Stream[Block] = {
-    Stream(Header(level, ins))
+  def header(level: Int, attr: Attr, ins: Stream[Inline]): Stream[Block] = {
+    Stream(Header(level, attr, ins))
   }
   
   def horizontalRule: Stream[Block] = Stream(HorizontalRule)

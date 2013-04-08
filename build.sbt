@@ -19,7 +19,10 @@ libraryDependencies ++= Seq(
   "org.scala-lang" % "scala-actors" % "2.10.1",
   "org.scalatest" % "scalatest_2.10" % "1.9.1" % "test",
   "com.chuusai" %% "shapeless" % "1.2.4",
-  "org.scalaz" %% "scalaz-core" % "6.0.4"
+  "org.scalaz" %% "scalaz-core" % "7.0.0-RC1",
+  "org.scalaz" %% "scalaz-scalacheck-binding" % "7.0.0-RC1" % "test",
+  "org.scalacheck" %% "scalacheck" % "1.10.0" % "test",
+  "commons-io" % "commons-io" % "2.4"          
 )
 
 scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature")

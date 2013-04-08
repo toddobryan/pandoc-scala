@@ -46,7 +46,7 @@ case class BlockQuote(content: Stream[Block]) extends Block
 case class OrderedList(attrs: ListAttributes, items: Stream[Stream[Block]]) extends Block
 case class BulletList(items: Stream[Stream[Block]]) extends Block
 case class DefinitionList(items: Stream[DefnItem]) extends Block
-case class Header(level: Int, content: Stream[Inline]) extends Block
+case class Header(level: Int, attr: Attr, content: Stream[Inline]) extends Block
 case object HorizontalRule extends Block
 case class Table(caption: Stream[Inline], alignments: Stream[Alignment], widths: Stream[Double],
   headers: Stream[TableCell], rows: Stream[Stream[TableCell]]) extends Block

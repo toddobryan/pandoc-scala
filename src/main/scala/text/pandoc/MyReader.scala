@@ -77,8 +77,8 @@ object MyReader extends RegexParsers {
       case (a, b) => DefnItem(a, b)
     }
     case t if t =:= typeOf[DefinitionList] => (regex("""DefinitionList\s+""".r) ~> getParser(manifest[Stream[DefnItem]])).map(DefinitionList(_))
-    case t if t =:= typeOf[Header] => (regex("""Header\s+""".r) ~> getParser(manifest[Int]) ~ getParser(manifest[Stream[Inline]])).map{
-        case level ~ content => Header(level, content)
+    case t if t =:= typeOf[Header] => (regex("""Header\s+""".r) ~> getParser(manifest[Int]) ~ getParser(manifest[Attr]) ~ getParser(manifest[Stream[Inline]])).map{
+        case level ~ attr ~ content => Header(level, attr, content)
     }
     case t if t =:= typeOf[Table] => (regex("""Table\s+""".r) ~> getParser(manifest[Stream[Inline]]) ~ getParser(manifest[Stream[Alignment]]) ~ getParser(manifest[Stream[Double]]) ~
         getParser(manifest[Stream[TableCell]]) ~ getParser(manifest[Stream[Stream[TableCell]]])).map {
@@ -178,6 +178,11 @@ object MyReader extends RegexParsers {
   def streamParser[T](implicit man: Manifest[T]): Parser[Stream[T]] = {
     val itemParser = getParser(man)
     (openParser("[") ~> repsep(itemParser, comma) <~ closeParser("]")) ^^ (_.toStream)
+  }
+  
+  def optionParser[T](implicit man: Manifest[T]): Parser[Option[T]] = {
+    val itemParser = getParser(man)
+    "None" ^^^ None | ((openParser("Some(") ~> itemParser <~ closeParser(")")) ^^ ((t: T) => Some(t)))
   }
   
   def openParser(s: String): Parser[String] = {

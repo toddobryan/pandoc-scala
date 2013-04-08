@@ -350,7 +350,7 @@ object Shared {
   
   abstract class Element
   case class Blk(block: Block) extends Element
-  case class Sec(lvl: Int, num: Stream[Int], ident: String, label: Stream[Inline], contents: Stream[Element]) extends Element
+  case class Sec(lvl: Int, num: Stream[Int], attrs: Attr, label: Stream[Inline], contents: Stream[Element]) extends Element
   
   def inlineListToIdentifier(in: Stream[Inline]): String = {
     def nbspToSp(ch: Char) = if (ch == '\u00A0') ' ' else ch
@@ -359,24 +359,35 @@ object Shared {
   }
   
   def hierarchicalize(blocks: Stream[Block]): Stream[Element] = {
-    hierarchicalizeWithIds(blocks) ! (Empty, Empty)
+    hierarchicalizeWithIds(blocks).eval(Empty)
   }
   
-  def hierarchicalizeWithIds(blocks: Stream[Block]): State[(Stream[Int], Stream[String]), Stream[Element]] = {
+  def hierarchicalizeWithIds(blocks: Stream[Block]): State[Stream[Int], Stream[Element]] = {
     blocks match {
-      case Empty => state((st: (Stream[Int], Stream[String])) => (st, Empty))
-      case Header(level, titlePrime) #:: xs => for {
-        lastNumAndUsedIdents <- init[(Stream[Int], Stream[String])]
-        (lastNum, usedIdents) = lastNumAndUsedIdents
-        ident = uniqueIdent(titlePrime, usedIdents)
+      case Empty => State((st: Stream[Int]) => (st, Empty))
+      case Header(level, Attr(id, classes, attrs), titlePrime) #:: xs => for {
+        lastNum <- get[Stream[Int]]
         lastNumPrime = lastNum.take(level)
-        newNum = if (lastNumPrime.length >= level) lastNumPrime.init :+ (lastNumPrime.last + 1)
-                 else lastNum ++ List.fill(level - lastNum.length - 1)(0) :+ 1
-        _ <- put[(Stream[Int], Stream[String])]((newNum, (ident #:: usedIdents)))
+        newnum = lastNumPrime.length match {
+          case x if (classes.contains("unnumbered")) => Empty
+          case x if (x >= level) => lastNumPrime.init :+ (lastNumPrime.last + 1)
+          case _ => lastNum ++ Stream.fill(level - lastNum.length - 1)(0) :+ 1
+        }
+        _ <- if (!newnum.isEmpty) put(newnum) else get[Stream[Int]]
         (sectionContents, rest) = xs.span((blk: Block) => !headerLtEq(level, blk))
         sectionContentsPrime <- hierarchicalizeWithIds(sectionContents)
         restPrime <- hierarchicalizeWithIds(rest)
-      } yield Sec(level, newNum, ident, titlePrime, sectionContentsPrime) #:: restPrime
+      } yield Sec(level, newnum, Attr(id, classes, attrs), titlePrime, sectionContentsPrime) #:: restPrime
+//        (lastNum, usedIdents) = lastNumAndUsedIdents
+//        ident = uniqueIdent(titlePrime, usedIdents)
+//        lastNumPrime = lastNum.take(level)
+//        newNum = if (lastNumPrime.length >= level) lastNumPrime.init :+ (lastNumPrime.last + 1)
+//                 else lastNum ++ List.fill(level - lastNum.length - 1)(0) :+ 1
+//        _ <- put[(Stream[Int], Stream[String])]((newNum, (ident #:: usedIdents)))
+//        (sectionContents, rest) = xs.span((blk: Block) => !headerLtEq(level, blk))
+//        sectionContentsPrime <- hierarchicalizeWithIds(sectionContents)
+//        restPrime <- hierarchicalizeWithIds(rest)
+//      } yield Sec(level, newNum, ident, titlePrime, sectionContentsPrime) #:: restPrime
       case x #:: rest => for {
         restPrime <- hierarchicalizeWithIds(rest)
       } yield Blk(x) #:: restPrime
@@ -385,7 +396,7 @@ object Shared {
   
   def headerLtEq(level: Int, block: Block): Boolean = {
     block match {
-      case Header(l, _) => (l <= level)
+      case Header(l, _, _) => (l <= level)
       case _ => false
     }
   }
@@ -408,7 +419,7 @@ object Shared {
   
   def headerShift[T](n: Int, doc: Pandoc): Pandoc = {
     def shift: (Any) => Any = {
-      case Header(l, c) => Header(l + n, c)
+      case Header(l, a, c) => Header(l + n, a, c)
       case x => x
     }
     bottomUp(shift, doc)
@@ -454,6 +465,7 @@ object Shared {
       wrapText: Boolean = true,
       literateHaskell: Boolean = false,
       html5: Boolean = false,
+      htmlQtags: Boolean = false,
       beamer: Boolean = false,
       chapters: Boolean = false,
       listings: Boolean = false,
@@ -467,7 +479,7 @@ object Shared {
       epubMetadata: String = "",
       tabStop: Int = 4,
       slideVariant: HtmlSlideVariant = NoSlides,
-      htmlMathMethod: HtmlMathMethod = PlainMath,
+      htmlMathMethod: HtmlMathMethod = MathJax("http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"),
       columns: Int = 72,
       emailObfuscation: ObfuscationMethod = JavaScriptObfuscation,
       identifierPrefix: String = "",

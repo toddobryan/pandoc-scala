@@ -9,7 +9,6 @@ import Stream.Empty
 import java.io.PrintStream
 import text.pandoc.Writer
 import text.pandoc.definition._
-import pandoc.text._
 import text.pandoc.Shared.WriterOptions
 import text.pandoc.Pretty.{cat, char, cr, nest, render, space, text, Doc}
 
@@ -110,8 +109,8 @@ object Native {
           show(manifest[Stream[Stream[Block]]])(items))
       case DefinitionList(items) => "DefinitionList %s".format(
           show(manifest[Stream[DefnItem]])(items))
-      case Header(level, content) => "Header %s %s".format(
-          show(manifest[Int])(level), show(manifest[Stream[Inline]])(content))
+      case Header(level, attr, content) => "Header %s %s %s".format(
+          show(manifest[Int])(level), show(manifest[Attr])(attr), show(manifest[Stream[Inline]])(content))
       case HorizontalRule => "HorizontalRule"
       case Table(caption, alignments, widths, headers, rows) =>
         "Table %s %s %s %s %s".format(
