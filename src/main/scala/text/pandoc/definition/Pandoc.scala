@@ -35,7 +35,7 @@ case class TableCell(wrapped: Stream[Block])
 
 case class Format(wrapped: String)
 
-case class DefnItem(item: Stream[Inline], defn: Stream[Stream[Block]])
+case class DefnItem(term: Stream[Inline], defs: Stream[Stream[Block]])
 
 sealed abstract class Block
 case class Plain(content: Stream[Inline]) extends Block

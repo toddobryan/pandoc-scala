@@ -103,7 +103,38 @@ object HtmlWriter {
         )
       } yield attribs.foldLeft(ordList(opts)(contents))((e: Elem, m: scala.xml.MetaData) => e % m)
     }
-    
+//  blockToHtml opts (DefinitionList lst) = do
+//  contents <- mapM (\(term, defs) ->
+//                  do term' <- if null term
+//                                 then return mempty
+//                                 else liftM (H.dt) $ inlineListToHtml opts term
+//                     defs' <- mapM ((liftM (\x -> H.dd $ (x >> nl opts))) .
+//                                    blockListToHtml opts) defs
+//                     return $ mconcat $ nl opts : term' : nl opts :
+//                                        intersperse (nl opts) defs') lst
+//  let lst' = H.dl $ mconcat contents >> nl opts
+//  let lst'' = if writerIncremental opts
+//                 then lst' ! A.class_ "incremental"
+//                 else lst'
+//  return lst''
+//    case DefinitionList(lst) => for {
+//      
+//    }
+  }
+  
+  def liftM(f: (NodeSeq => NodeSeq))(s: State[WriterState, NodeSeq]): 
+      State[WriterState, NodeSeq] =  for {
+    x1 <- s
+  } yield f(x1)
+  
+  def defnItemToHtml(opts: WriterOptions)(di: DefnItem): State[WriterState, NodeSeq] = {
+    import scalaz.std.stream._
+    for {
+      termPrime <- if (di.term.isEmpty) State.state(NodeSeq.Empty)
+                  else liftM((x: NodeSeq) => <dt>{ x }</dt>)(inlineListToHtml(opts)(di.term)) 
+      defsPrime <- di.defs.traverseS((blks: Stream[Block]) => 
+        liftM((x: NodeSeq) => <dd>{ x ++ nl(opts) }</dd>)(blockListToHtml(opts)(blks)))
+    } yield nl(opts) ++ termPrime ++ nl(opts) ++ defsPrime.intersperse(nl(opts))
   }
   
   def html5Style(s: ListNumberStyle): Option[String] = s match {
