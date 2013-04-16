@@ -30,6 +30,8 @@ object HtmlWriter {
       body: Node,
       newVars: Map[String, String])
       
+  def nsConcat(ns: Stream[NodeSeq]): NodeSeq = ns.foldLeft(NodeSeq.Empty)(_ ++ _)
+      
   
   /*def pandocToHtml(opts: WriterOptions, doc: Pandoc): State[WriterState, HtmlTuple] = {
     val (titlePrime, authorsPrime, datePrime, blocks) =
@@ -43,11 +45,11 @@ object HtmlWriter {
   def nl(opts: WriterOptions): NodeSeq = if (opts.switches.wrapText) Unparsed("\n") else NodeSeq.Empty
   
   def unordList(opts: WriterOptions)(items: Stream[NodeSeq]): Elem = {
-    <ul>{ toListItems(opts)(items).foldLeft(NodeSeq.Empty)((l: NodeSeq, r: NodeSeq) => l ++ r) }</ul>
+    <ul>{ nsConcat(toListItems(opts)(items)) }</ul>
   }
 
   def ordList(opts: WriterOptions)(items: Stream[NodeSeq]): Elem = {
-    <ol>{ toListItems(opts)(items).foldLeft(NodeSeq.Empty)((l: NodeSeq, r: NodeSeq) => l ++ r) }</ol>
+    <ol>{ nsConcat(toListItems(opts)(items)) }</ol>
   }
 
   
@@ -103,23 +105,64 @@ object HtmlWriter {
         )
       } yield attribs.foldLeft(ordList(opts)(contents))((e: Elem, m: scala.xml.MetaData) => e % m)
     }
-//  blockToHtml opts (DefinitionList lst) = do
-//  contents <- mapM (\(term, defs) ->
-//                  do term' <- if null term
-//                                 then return mempty
-//                                 else liftM (H.dt) $ inlineListToHtml opts term
-//                     defs' <- mapM ((liftM (\x -> H.dd $ (x >> nl opts))) .
-//                                    blockListToHtml opts) defs
-//                     return $ mconcat $ nl opts : term' : nl opts :
-//                                        intersperse (nl opts) defs') lst
-//  let lst' = H.dl $ mconcat contents >> nl opts
-//  let lst'' = if writerIncremental opts
-//                 then lst' ! A.class_ "incremental"
-//                 else lst'
-//  return lst''
-//    case DefinitionList(lst) => for {
-//      
-//    }
+    case DefinitionList(lst) => {
+      import scalaz.std.stream._
+      import scala.xml.Null
+      val increm = if (opts.switches.incremental) { 
+        new UnprefixedAttribute("class", "incremental", Null)
+      } else {
+        Null
+      }
+      lst.traverseS((di: DefnItem) => defnItemToHtml(opts)(di)).map(nsConcat(_)).map(
+          (x: NodeSeq) => <dl>{ x  ++ nl(opts) }</dl> % increm)
+    }
+//blockToHtml opts (Table capt aligns widths headers rows') = do
+//  captionDoc ←  if null capt
+//                   then return mempty
+//                   else do
+//                     cs ←  inlineListToHtml opts capt
+//                     return $ H.caption cs >> nl opts
+//  let percent w = show (truncate (100*w) ∷  Integer) ⊕ "%"
+//  let coltags = if all (≡ 0.0) widths
+//                   then mempty
+//                   else mconcat $ map (λw →
+//                          if writerHtml5 opts
+//                             then H.col ! A.style (toValue $ "width: " ⊕ percent w)
+//                             else H.col ! A.width (toValue $ percent w) >> nl opts)
+//                          widths
+//  head' ←  if all null headers
+//              then return mempty
+//              else do
+//                contents ←  tableRowToHtml opts aligns 0 headers
+//                return $ H.thead (nl opts >> contents) >> nl opts
+//  body' ←  liftM (λx → H.tbody (nl opts >> mconcat x)) $
+//               zipWithM (tableRowToHtml opts aligns) [1‥] rows'
+//  return $ H.table $ nl opts >> captionDoc >> coltags >> head' >>
+//                   body' >> nl opts
+    case Table(capt, aligns, widths, headers, rows) => {
+      import scalaz.std.stream._
+      def percent(w: Double) = "%d%%".format((100 * w).toInt)
+      val captionDoc = if (capt.isEmpty) state(NodeSeq.Empty) else for {
+           cs <- inlineListToHtml(opts)(capt)
+        } yield <caption>{ cs }</caption> ++ nl(opts)
+      val coltags = if (widths.forall(_ == 0.0)) NodeSeq.Empty else {
+          widths.map(w => if (opts.switches.html5) <col style={ "width: " + percent(w) } />
+          else <col width={ percent(w) }/> ++ nl(opts))
+        }
+      val headPrime = if (headers.forall(_.wrapped.isEmpty)) state(NodeSeq.Empty) 
+          else for {
+            contents <- tableRowToHtml(opts)(aligns)(0)(headers)
+          } yield <thead>{ nl(opts) ++ contents }</thead> ++ nl(opts)
+      val bodyPrime = rows.zipWithIndex.traverseS(
+          (ri: (Stream[TableCell], Int)) => tableRowToHtml(opts)(aligns)(ri._2 + 1)(ri._1)).map(
+              (x: Stream[NodeSeq]) => <tbody>{ nl(opts) ++ nsConcat(x) }</tbody>)
+      for {
+        cd <- captionDoc
+        hp <- headPrime
+        bp <- bodyPrime
+      } yield <table>{ nl(opts) ++ cd ++ coltags ++ hp ++ bp ++ nl(opts) }</table>
+    }
+
   }
   
   def liftM(f: (NodeSeq => NodeSeq))(s: State[WriterState, NodeSeq]): 
@@ -129,12 +172,16 @@ object HtmlWriter {
   
   def defnItemToHtml(opts: WriterOptions)(di: DefnItem): State[WriterState, NodeSeq] = {
     import scalaz.std.stream._
+    val termPrime: State[WriterState, NodeSeq] =
+        if (di.term.isEmpty) State.state(NodeSeq.Empty)
+        else liftM((x: NodeSeq) => nl(opts) ++ <dt>{ x }</dt> ++ nl(opts))(inlineListToHtml(opts)(di.term)) 
+    val defsPrime: State[WriterState, NodeSeq] =  di.defs.traverseS((blks: Stream[Block]) => 
+        liftM((x: NodeSeq) => <dd>{ x ++ nl(opts) }</dd> ++ nl(opts))(blockListToHtml(opts)(blks))).map(
+        nsConcat(_))
     for {
-      termPrime <- if (di.term.isEmpty) State.state(NodeSeq.Empty)
-                  else liftM((x: NodeSeq) => <dt>{ x }</dt>)(inlineListToHtml(opts)(di.term)) 
-      defsPrime <- di.defs.traverseS((blks: Stream[Block]) => 
-        liftM((x: NodeSeq) => <dd>{ x ++ nl(opts) }</dd>)(blockListToHtml(opts)(blks)))
-    } yield nl(opts) ++ termPrime ++ nl(opts) ++ defsPrime.intersperse(nl(opts))
+      t <- termPrime
+      d <- defsPrime
+    } yield t ++ d
   }
   
   def html5Style(s: ListNumberStyle): Option[String] = s match {
@@ -168,13 +215,13 @@ object HtmlWriter {
     if (1 <= level && level <= 6) hs(level - 1)(contents) else <p>{ contents }</p>
   }
   
-  def tableRowToHtml(opts: WriterOptions)(aligns: Stream[Alignment])(rowNum: Int)(cols: Stream[Stream[Block]]): State[WriterState, NodeSeq] =  {
+  def tableRowToHtml(opts: WriterOptions)(aligns: Stream[Alignment])(rowNum: Int)(cols: Stream[TableCell]): State[WriterState, NodeSeq] =  {
     import scalaz.std.stream._
     val mkCell: (NodeSeq => Elem) = if (rowNum == 0) (x => <th>{ x }</th>) else (x => <td>{ x }</td>)
     val rowClass: String = if (rowNum == 0) "header" else if (rowNum % 2 == 0) "even" else "odd"
     for {
-      colsPrime <- aligns.fzipWith(cols)((_, _)).traverseS((ai: (Alignment, Stream[Block])) => 
-        tableItemToHtml(opts)(mkCell)(ai._1)(ai._2))
+      colsPrime <- aligns.fzipWith(cols)((_, _)).traverseS((ai: (Alignment, TableCell)) => 
+        tableItemToHtml(opts)(mkCell)(ai._1)(ai._2.wrapped))
     } yield <tr class={ rowClass }>{ nl(opts) ++ colsPrime ++ nl(opts) }</tr> 
   }
   
@@ -207,12 +254,12 @@ object HtmlWriter {
   
   def blockListToHtml(opts: WriterOptions)(lst: Stream[Block]): State[WriterState, NodeSeq] = {
     import scalaz.std.stream._
-    lst.traverseS(blockToHtml(opts)).map(blks => blks.intersperse(nl(opts)).foldLeft(NodeSeq.Empty)((l: NodeSeq, r: NodeSeq) => l ++ r))
+    lst.traverseS(blockToHtml(opts)).map(blks => nsConcat(blks.intersperse(nl(opts))))
   }
   
   def inlineListToHtml(opts: WriterOptions)(lst: Stream[Inline]): State[WriterState, NodeSeq] = {
     import scalaz.std.stream._
-    lst.traverseS(inlineToHtml(opts)).map(inls => inls.foldLeft(NodeSeq.Empty)((l: NodeSeq, r: NodeSeq) => l ++ r))
+    lst.traverseS(inlineToHtml(opts)).map(nsConcat(_))
   }
   
   def strToOpt(str: String): Option[String] = str match {

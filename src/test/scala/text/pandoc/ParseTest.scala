@@ -14,11 +14,11 @@ class ParseTest extends FunSuite {
       Some((Stream(Str("\"abc\""), Space, Emph(Stream(Str("\"emphasis\"")))), "")))
   }
   
-  test("read native files") {
+  /*test("read native files") {
     val htmlReaderNative = Source.fromURL(getClass.getResource("/tests/html-reader.native")).mkString
     val asNative = parsedPlusRest(read[Pandoc](htmlReaderNative))
     assert(asNative.isDefined)
     val backToNative = Native.writeNative(WriterOptions().copy(switches = WriterSwitchOptions().copy(standalone = true)), asNative.get._1)
     assert(backToNative === htmlReaderNative)
-  }
+  }*/
 }
