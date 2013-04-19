@@ -9,8 +9,7 @@ import scalaz.syntax.foldable._
 import scalaz._
 import Scalaz._
 import org.apache.commons.io.FilenameUtils
-import scala.xml.UnprefixedAttribute
-import scala.xml.Elem
+import scala.xml.{Elem, UnprefixedAttribute, MetaData}
 
 object HtmlWriter {
   case class WriterState(
@@ -50,6 +49,28 @@ object HtmlWriter {
 
   def ordList(opts: WriterOptions)(items: Stream[NodeSeq]): Elem = {
     <ol>{ nsConcat(toListItems(opts)(items)) }</ol>
+  }
+  
+  def footnoteSection(opts: WriterOptions, notes: Stream[NodeSeq]): NodeSeq = ???
+  
+  /*
+   * 
+  parseMailTo
+  
+  obfuscateLink
+  
+  def obfuscateChar
+  
+  def obfuscateString
+   */
+  
+  def addAttrs(opts: WriterOptions, attr: Attr, elem: Elem): NodeSeq = elem % attrsToHtml(opts, attr)
+  
+  def attrsToHtml(opts: WriterOptions, attr: Attr): MetaData = {
+    new UnprefixedAttribute("id", strToOpt(attr.id).map((id: String) => Text(opts.identifierPrefix + id)),
+        new UnprefixedAttribute("class", strToOpt(attr.classes.mkString(" ")).map(Text(_)),
+            attr.attrs.foldRight(scala.xml.Null.asInstanceOf[MetaData])((kv: KeyValue, md: MetaData) =>
+              new UnprefixedAttribute(kv.key, strToOpt(kv.value).map(Text(_)), md))))
   }
 
   
