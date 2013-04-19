@@ -116,44 +116,21 @@ object HtmlWriter {
       lst.traverseS((di: DefnItem) => defnItemToHtml(opts)(di)).map(nsConcat(_)).map(
           (x: NodeSeq) => <dl>{ x  ++ nl(opts) }</dl> % increm)
     }
-//blockToHtml opts (Table capt aligns widths headers rows') = do
-//  captionDoc ←  if null capt
-//                   then return mempty
-//                   else do
-//                     cs ←  inlineListToHtml opts capt
-//                     return $ H.caption cs >> nl opts
-//  let percent w = show (truncate (100*w) ∷  Integer) ⊕ "%"
-//  let coltags = if all (≡ 0.0) widths
-//                   then mempty
-//                   else mconcat $ map (λw →
-//                          if writerHtml5 opts
-//                             then H.col ! A.style (toValue $ "width: " ⊕ percent w)
-//                             else H.col ! A.width (toValue $ percent w) >> nl opts)
-//                          widths
-//  head' ←  if all null headers
-//              then return mempty
-//              else do
-//                contents ←  tableRowToHtml opts aligns 0 headers
-//                return $ H.thead (nl opts >> contents) >> nl opts
-//  body' ←  liftM (λx → H.tbody (nl opts >> mconcat x)) $
-//               zipWithM (tableRowToHtml opts aligns) [1‥] rows'
-//  return $ H.table $ nl opts >> captionDoc >> coltags >> head' >>
-//                   body' >> nl opts
     case Table(capt, aligns, widths, headers, rows) => {
       import scalaz.std.stream._
       def percent(w: Double) = "%d%%".format((100 * w).toInt)
-      val captionDoc = if (capt.isEmpty) state(NodeSeq.Empty) else for {
+      val captionDoc: State[WriterState, NodeSeq] = if (capt.isEmpty) state(NodeSeq.Empty) else for {
            cs <- inlineListToHtml(opts)(capt)
         } yield <caption>{ cs }</caption> ++ nl(opts)
       val coltags = if (widths.forall(_ == 0.0)) NodeSeq.Empty else {
           widths.map(w => if (opts.switches.html5) <col style={ "width: " + percent(w) } />
           else <col width={ percent(w) }/> ++ nl(opts))
         }
-      val headPrime = if (headers.forall(_.wrapped.isEmpty)) state(NodeSeq.Empty) 
+      val headPrime: State[WriterState, NodeSeq] = if (headers.forall(_.wrapped.isEmpty)) state(NodeSeq.Empty) 
           else for {
             contents <- tableRowToHtml(opts)(aligns)(0)(headers)
           } yield <thead>{ nl(opts) ++ contents }</thead> ++ nl(opts)
-      val bodyPrime = rows.zipWithIndex.traverseS(
+      val bodyPrime: State[WriterState, NodeSeq] = rows.zipWithIndex.traverseS(
           (ri: (Stream[TableCell], Int)) => tableRowToHtml(opts)(aligns)(ri._2 + 1)(ri._1)).map(
               (x: Stream[NodeSeq]) => <tbody>{ nl(opts) ++ nsConcat(x) }</tbody>)
       for {
