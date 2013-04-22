@@ -7,8 +7,8 @@ import java.text.ParseException
 import scalaz.State
 import scalaz.Scalaz._
 import text.highlighting.kate.Types.{Style, Pygments}
-import Generic.{bottomUp, topDown, queryWith}
-import Pretty.charWidth
+import text.pandoc.Generic.{bottomUp, topDown, queryWith}
+import text.pandoc.Pretty.charWidth
 
 import definition._
 
@@ -424,71 +424,6 @@ object Shared {
     }
     bottomUp(shift, doc)
   }
-  
-  sealed abstract class HtmlMathMethod
-  case object PlainMath extends HtmlMathMethod
-  case class LaTeXMathML(url: Option[String]) extends HtmlMathMethod
-  case class JsMath(url: Option[String]) extends HtmlMathMethod
-  case object GladTeX extends HtmlMathMethod
-  case class WebTeX(url: String) extends HtmlMathMethod
-  case class MathML(url: Option[String]) extends HtmlMathMethod
-  case class MathJax(url: String) extends HtmlMathMethod
-
-  sealed abstract class CiteMethod
-  case object Citeproc extends CiteMethod
-  case object Natbib extends CiteMethod
-  case object Biblatex extends CiteMethod
-
-  sealed abstract class ObfuscationMethod
-  case object NoObfuscation extends ObfuscationMethod
-  case object ReferenceObfuscation extends ObfuscationMethod
-  case object JavaScriptObfuscation extends ObfuscationMethod
-
-  sealed abstract class HtmlSlideVariant
-  case object S5Slides extends HtmlSlideVariant
-  case object SlidySlides extends HtmlSlideVariant
-  case object DZSlides extends HtmlSlideVariant
-  case object NoSlides extends HtmlSlideVariant
-
-  // pulled Boolean options into separate class, because there are too many
-  // (more than 22)
-  case class WriterSwitchOptions(
-      standalone: Boolean = false,
-      tableOfContents: Boolean = false,
-      incremental: Boolean = false,
-      xeTeX: Boolean = false,
-      ignoreNotes: Boolean = false,
-      numberSections: Boolean = false,
-      sectionDivs: Boolean = false,
-      strictMarkdown: Boolean = false,
-      referenceLinks: Boolean = false,
-      wrapText: Boolean = true,
-      literateHaskell: Boolean = false,
-      html5: Boolean = false,
-      htmlQtags: Boolean = false,
-      beamer: Boolean = false,
-      chapters: Boolean = false,
-      listings: Boolean = false,
-      highlight: Boolean = false,
-      setextHeaders: Boolean = true)
-      
-  case class WriterOptions(
-      switches: WriterSwitchOptions = WriterSwitchOptions(),
-      template: String = "",
-      variables: List[(String, String)] = Nil,
-      epubMetadata: String = "",
-      tabStop: Int = 4,
-      slideVariant: HtmlSlideVariant = NoSlides,
-      htmlMathMethod: HtmlMathMethod = MathJax("http://cdn.mathjax.org/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"),
-      columns: Int = 72,
-      emailObfuscation: ObfuscationMethod = JavaScriptObfuscation,
-      identifierPrefix: String = "",
-      sourceDirectory: File = new File("."),
-      userDataDir: Option[File] = None,
-      citeMethod: CiteMethod = Citeproc,
-      biblioFiles: List[File] = Nil,
-      slideLevel: Option[Int] = None,
-      highlightStyle: Style = Pygments)
 }
 
 // not translated:

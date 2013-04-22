@@ -9,15 +9,15 @@ import Stream.Empty
 import java.io.PrintStream
 import text.pandoc.Writer
 import text.pandoc.definition._
-import text.pandoc.Shared.WriterOptions
+import text.pandoc.options.WriterOptions
 import text.pandoc.Pretty.{cat, char, cr, nest, render, space, text, Doc}
 
 object Native {
   def writeNative(opts: WriterOptions, doc: Pandoc): String = {
-    val colWidth: Option[Int] = if (opts.switches.wrapText) Some(opts.columns) else None
+    val colWidth: Option[Int] = if (opts.wrapText) Some(opts.columns) else None
     val blocks: Doc = prettyList(doc.content.map(prettyBlock(_)))
     val withMaybeHead = 
-      if (opts.switches.standalone) text("Pandoc (" + show(manifest[Meta])(doc.meta) + ")") %% 
+      if (opts.standalone) text("Pandoc (" + show(manifest[Meta])(doc.meta) + ")") %% 
           blocks %% cr
       else blocks 
     render(colWidth, withMaybeHead)
